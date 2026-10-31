@@ -237,7 +237,7 @@ export function CurriculumGrid({ onNavigateToSolver }: CurriculumGridProps) {
   const handleAutoPlan = () => {
     const res = applyAutoCriticalPathPlan(maxCreditsPerSemester);
     setPlannerFeedback(
-      `¡Planificación lista! Titulación estimada en ${res.totalSemesters} semestres respetando un máximo de ${maxCreditsPerSemester} SCT/semestre.`
+      `¡Planificación optimizada! Titulación en ${res.totalSemesters} semestres con carga compactada (máx. ${maxCreditsPerSemester} SCT/semestre).`
     );
   };
 

@@ -294,7 +294,6 @@ export const useAcademicStore = create<AcademicStoreState>()(
           approvedCourses,
           inProgressCourses,
           maxCreditsPerSemester,
-          customMaxSemester,
         } = get();
         const credits = maxCreditsSct ?? maxCreditsPerSemester ?? 30;
         const approvedSiglas = new Set(Object.keys(approvedCourses));
@@ -309,7 +308,10 @@ export const useAcademicStore = create<AcademicStoreState>()(
 
         set({
           plannedSemesterOverrides: result.plannedSemesterOverrides,
-          customMaxSemester: Math.max(customMaxSemester, result.totalSemesters),
+          customMaxSemester: Math.max(
+            curriculum.semestres_totales || 11,
+            result.totalSemesters
+          ),
           plannerMode: 'planned',
         });
 

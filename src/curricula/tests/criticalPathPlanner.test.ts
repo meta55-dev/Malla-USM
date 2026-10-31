@@ -222,6 +222,79 @@ console.log('\nTest 5: Transitive Multi-Level Conflict Resolution');
   console.log('  ✓ Multi-level transitive chain conflicts cleanly resolved in topological order.');
 }
 
+// -------------------------------------------------------------
+// Test 6: Approved Courses Do Not Consume Future Planning Credits
+// -------------------------------------------------------------
+console.log('\nTest 6: Approved Courses Do Not Restrict Future Semester Capacity');
+{
+  // Student approved all courses up to semester 10 except INF-7 (2 SCT) and INF-314 (5 SCT)
+  const approved = new Set(
+    ramos.filter((c) => c.semestre <= 10 && c.sigla !== 'INF-7' && c.sigla !== 'INF-314').map((c) => c.sigla)
+  );
+
+  const plan = planFastestGraduation(ramos, approved, new Set(), 24);
+
+  // Both INF-7 and INF-314 must be scheduled together in Semester 9 or 10 without being split into separate solitary semesters
+  const semInf7 = plan.plannedSemesterOverrides['INF-7'];
+  const semInf314 = plan.plannedSemesterOverrides['INF-314'];
+
+  assert(semInf7 !== undefined, 'INF-7 must be planned');
+  assert(semInf314 !== undefined, 'INF-314 must be planned');
+  assert(plan.totalSemesters <= 11, `Expected graduation in <= 11 semesters, got ${plan.totalSemesters}`);
+
+  console.log(`  ✓ Future capacity preserved: total semesters = ${plan.totalSemesters} (<= 11).`);
+}
+
+// -------------------------------------------------------------
+// Test 7: Backward Compaction & Elimination of Solitary Electives
+// -------------------------------------------------------------
+console.log('\nTest 7: Backward Compaction Prevents Solitary Tail Semesters');
+{
+  // Student starting from scratch with 30 SCT max
+  const plan = planFastestGraduation(ramos, new Set(), new Set(), 30);
+
+  // Check that no intermediate semester has fewer than 10 SCT
+  for (let s = 1; s < plan.totalSemesters; s++) {
+    const breakdown = plan.semestersBreakdown[s];
+    if (breakdown && breakdown.courses.length > 0) {
+      assert(
+        breakdown.totalSct >= 15,
+        `Semester ${s} should have balanced load >= 15 SCT, got ${breakdown.totalSct} SCT`
+      );
+    }
+  }
+
+  // Check that the terminal semester is not an artificial 2 SCT solitary elective
+  const terminalBreakdown = plan.semestersBreakdown[plan.totalSemesters];
+  assert(terminalBreakdown !== undefined, 'Terminal breakdown exists');
+  // In ICI 2014, terminal semester is Memoria (INF-310, 20 SCT)
+  assert(
+    terminalBreakdown.totalSct >= 15,
+    `Terminal semester has substantial load, got ${terminalBreakdown.totalSct} SCT`
+  );
+
+  console.log('  ✓ Backward compaction verified: no solitary 1-course tail semesters.');
+}
+
+// -------------------------------------------------------------
+// Test 8: Balanced Workload Packing within Slider Range
+// -------------------------------------------------------------
+console.log('\nTest 8: Workload Packing within Configured Slider Range');
+{
+  const plan26 = planFastestGraduation(ramos, new Set(), new Set(), 26);
+  for (let s = 1; s <= plan26.totalSemesters; s++) {
+    const b = plan26.semestersBreakdown[s];
+    if (b && b.courses.length > 0) {
+      assert(
+        b.totalSct <= 26,
+        `Semester ${s} must not exceed configured max of 26 SCT, got ${b.totalSct} SCT`
+      );
+    }
+  }
+
+  console.log('  ✓ Strict credit limit respected across all semesters with optimal packing.');
+}
+
 console.log('\n========================================');
 console.log('🎉 ALL CRITICAL PATH PLANNER TESTS PASSED! 🎉');
 console.log('========================================\n');

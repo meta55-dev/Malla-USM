@@ -301,29 +301,29 @@ export function planFastestGraduation(
   if (startSemester !== undefined && startSemester >= 1) {
     currentStartSemester = Math.floor(startSemester);
   } else {
-    // Si hay ramos cursando, el semestre de inicio es el mínimo entre ellos o el más representativo
+    // Si hay ramos cursando, el semestre de inicio se toma del nivel de dichos ramos
     const inProgressList = allCourses.filter((c) => isCourseInProgress(c));
-    const approvedList = allCourses.filter((c) => isCourseApproved(c));
+    const unapprovedCourses = allCourses.filter((c) => !isCourseApproved(c));
 
     if (inProgressList.length > 0) {
-      currentStartSemester = Math.min(...inProgressList.map((c) => c.semestre));
-    } else if (approvedList.length > 0) {
-      const maxApprovedSem = Math.max(...approvedList.map((c) => c.semestre));
-      // Verificar si todos los ramos hasta maxApprovedSem están aprobados
-      const allPrevApproved = allCourses
-        .filter((c) => c.semestre <= maxApprovedSem)
-        .every((c) => isCourseApproved(c));
-      currentStartSemester = allPrevApproved ? maxApprovedSem + 1 : Math.max(1, maxApprovedSem);
+      currentStartSemester = Math.max(1, Math.max(...inProgressList.map((c) => c.semestre)));
+    } else if (unapprovedCourses.length > 0) {
+      // Primer semestre curricular que contiene ramos pendientes por aprobar
+      currentStartSemester = Math.max(1, Math.min(...unapprovedCourses.map((c) => c.semestre)));
     }
   }
 
   const plannedSemesterOverrides: Record<string, number> = {};
   const scheduledSiglasSet = new Set<string>();
 
-  // 1. Los ramos aprobados se mantienen en su semestre original (o histórico)
+  // 1. Los ramos aprobados pertenecen a semestres históricos (< currentStartSemester o su semestre oficial)
   for (const course of allCourses) {
     if (isCourseApproved(course)) {
-      plannedSemesterOverrides[course.sigla] = course.semestre;
+      if (currentStartSemester > 1 && course.semestre >= currentStartSemester) {
+        plannedSemesterOverrides[course.sigla] = currentStartSemester - 1;
+      } else {
+        plannedSemesterOverrides[course.sigla] = course.semestre;
+      }
       scheduledSiglasSet.add(normalizeCourseSigla(course.sigla));
     }
   }
@@ -410,7 +410,7 @@ export function planFastestGraduation(
   const maxSemestersAllowed = Math.max(allCourses.length + 5, 25);
 
   while (remainingCourses.length > 0 && activeSemester <= maxSemestersAllowed) {
-    // Calcular créditos ya ocupados en activeSemester (por ramos aprobados o in-progress fijados)
+    // Calcular créditos ocupados en activeSemester por asignaturas en este semestre.
     let alreadyAssignedSct = 0;
     for (const [sigla, sem] of Object.entries(plannedSemesterOverrides)) {
       if (sem === activeSemester) {
@@ -484,7 +484,47 @@ export function planFastestGraduation(
     }
   }
 
-  // 4. Construir desglose por semestres (semestersBreakdown) y calcular total de semestres
+  // 4. Pase de Compactación Retrógrada y Balance de Carga (Backward Compaction Pass):
+  // Adelanta asignaturas de semestres tardíos hacia semestres anteriores con holgura disponible,
+  // eliminando semestres solitarios/libres y reduciendo la carrera al menor número real de semestres.
+  let compactionChanged = true;
+  while (compactionChanged) {
+    compactionChanged = false;
+    // Evaluar asignaturas pendientes en orden descendente de semestre (las más tardías primero)
+    const sortedDesc = [...pendingCourses].sort(
+      (a, b) => (plannedSemesterOverrides[b.sigla] || 0) - (plannedSemesterOverrides[a.sigla] || 0)
+    );
+
+    for (const c of sortedDesc) {
+      const currentSem = plannedSemesterOverrides[c.sigla];
+      if (!currentSem || currentSem <= currentStartSemester) continue;
+
+      const cSct = c.creditos_sct || 5;
+
+      // Buscar el menor semestre s en [currentStartSemester, currentSem - 1] donde los prerrequisitos se cumplan
+      // y donde el ramo quepa dentro del creditLimit
+      for (let s = currentStartSemester; s < currentSem; s++) {
+        if (arePrerequisitesMetForSemester(c, s)) {
+          // Calcular SCT total ocupado en el semestre objetivo s
+          let sctInS = 0;
+          for (const [sigla, sem] of Object.entries(plannedSemesterOverrides)) {
+            if (sigla !== c.sigla && sem === s) {
+              const other = allCourses.find((r) => r.sigla === sigla);
+              if (other) sctInS += other.creditos_sct || 5;
+            }
+          }
+
+          if (sctInS + cSct <= creditLimit) {
+            plannedSemesterOverrides[c.sigla] = s;
+            compactionChanged = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Construir desglose por semestres (semestersBreakdown) y calcular total de semestres
   let maxAssignedSem = 0;
   for (const sem of Object.values(plannedSemesterOverrides)) {
     if (sem > maxAssignedSem) maxAssignedSem = sem;
