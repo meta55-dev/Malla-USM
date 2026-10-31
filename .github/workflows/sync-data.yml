@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync-data:
@@ -59,16 +60,13 @@ jobs:
             echo "Credenciales SIGA no configuradas en Secrets; sólo se actualizaron programas públicos OAI."
           fi
 
-      - name: Confirmar y subir datos actualizados
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
-          git add public/data/*.json
-
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(data): sincronización automática de catálogos USM"
-            git push
-          else
-            echo "No se detectaron cambios en los catálogos JSON."
-          fi
+      - name: Crear Pull Request con catálogos actualizados
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(data): sincronización automática de catálogos USM"
+          branch: "automation/sync-catalogos"
+          title: "chore(data): sincronización automática de catálogos USM"
+          body: |
+            Sincronización periódica automática de catálogos y horarios USM generada por GitHub Actions.
+            - Actualizaciones detectadas en `public/data/*.json`.
+          delete-branch: true
