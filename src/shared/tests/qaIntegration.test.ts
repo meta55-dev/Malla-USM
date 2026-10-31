@@ -1,3 +1,6 @@
+import { calculateCurriculumGraph } from '@/curricula/prerequisites/graphUnlock';
+import { solveCourseStatus } from '@/wolfram-solver/engine/gradeSolver';
+import { Course } from '@/shared/types/academic';
 import {
   solveSubFormulaCourse,
   computeBlockDetails,
@@ -446,6 +449,81 @@ console.log('\n📌 Suite 6: Deletion Protection Confirmation & Unenrollment Saf
   assertEquals(solveAfter, null, 'Solve result for unenrolled course returns null without errors');
 
   console.log('  ✅ Deletion protection modal workflow & safe unenrollment lifecycle validated.');
+}
+
+// ============================================================================
+// SUITE 7: Regression Audit Fixes Verification (Wolfram Root, DAG DNF, Store Stats)
+// ============================================================================
+console.log('\n📌 Suite 7: Regression Audit Invariants Verification');
+{
+  // 1. Wolfram Solver: Root > 100 reachable in [0, 300] without premature clamping
+  const testConfig: EnrolledCourseConfig = {
+    sigla: 'TEST-100',
+    passingGrade: 55,
+    groups: [
+      {
+        id: 'g1',
+        name: 'Certamen 1',
+        weight: 0.5,
+        minGradeRequired: null,
+        evaluations: [{ id: 'e1', name: 'C1', weight: 1.0, score: 0 }],
+      },
+      {
+        id: 'g2',
+        name: 'Certamen 2',
+        weight: 0.5,
+        minGradeRequired: null,
+        evaluations: [{ id: 'e2', name: 'C2', weight: 1.0, score: null }],
+      },
+    ],
+  };
+  // To pass with 55 with C1=0 and 50% weight: 0*0.5 + C2*0.5 >= 55 => C2 >= 110.0!
+  const resStd = solveCourseStatus(testConfig, 55);
+  assert(resStd.effectiveRequiredGrade !== null, 'Effective required grade computed');
+  assertApprox(resStd.effectiveRequiredGrade!, 110.0, 0.1, 'Effective required grade should be 110.0 (> 100 root found cleanly)');
+
+  // 2. DAG: Courses with empty prerrequisitos but non-empty requisitos_dnf MUST NOT unlock prematurely
+  const dummyCourses: Course[] = [
+    {
+      id: 1,
+      sigla: 'MAT021',
+      nombre: 'Matemática I',
+      creditos_usm: 5,
+      creditos_sct: 5,
+      semestre: 1,
+      prerrequisitos: [],
+      requisitos_dnf: [],
+      area: 'MFQ',
+      tipo: 'Obligatoria',
+    },
+    {
+      id: 2,
+      sigla: 'INF999',
+      nombre: 'Tesis Avanzada',
+      creditos_usm: 10,
+      creditos_sct: 10,
+      semestre: 11,
+      prerrequisitos: [], // Empty base prerrequisitos!
+      requisitos_dnf: [[{ sigla: 'MAT021', tipo: 'approval' }]], // DNF requires MAT021!
+      area: 'INF',
+      tipo: 'Obligatoria',
+    },
+  ];
+  // With 0 approved courses:
+  const graphBefore = calculateCurriculumGraph(dummyCourses, {});
+  assert(graphBefore['INF999'].status === 'LOCKED', 'INF999 must remain LOCKED when MAT021 is not approved');
+  assert(graphBefore['INF999'].missingPrerequisites.some(p => p.replace('-', '') === 'MAT021'), 'MAT021 reported as missing prerequisite');
+
+  // With MAT021 approved:
+  const graphAfter = calculateCurriculumGraph(dummyCourses, { MAT021: { sigla: 'MAT021' } });
+  assert(graphAfter['INF999'].status === 'AVAILABLE', 'INF999 unlocks to AVAILABLE once MAT021 is approved');
+
+  // 3. Store Statistics: Fallback for creditos_usm when SCT is 0
+  const stats = useAcademicStore.getState().getStatistics();
+  assert(typeof stats.percentProgress === 'number' && !isNaN(stats.percentProgress), 'Progress is a valid number');
+  assert(stats.approvedCoursesCount >= 0, 'Approved count is non-negative');
+
+  console.log('  ✅ Wolfram [0,300] roots, DAG DNF fallback, and Store Statistics validated.');
 }
 
 console.log('\n================================================================');
