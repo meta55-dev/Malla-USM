@@ -29,9 +29,10 @@ export interface ScheduleOptimizationResult {
 export interface PrecomputedParallel {
   sigla: string;
   parallel: CourseParallel;
-  dayMasks: number[]; // 7 elements (0=Lunes..6=Domingo), 16-bit masks for blocks 1..16
+  dayMasks: number[]; // 7 elements (0=Lunes..6=Domingo), up to 24-bit masks for blocks 1..24
   occupiedDays: number;
   hasSaturday: boolean;
+  hasSunday: boolean;
 }
 
 /**
@@ -50,13 +51,15 @@ export function popcount(n: number): number {
 export function precomputeParallel(sigla: string, parallel: CourseParallel): PrecomputedParallel {
   const dayMasks = [0, 0, 0, 0, 0, 0, 0];
   let hasSat = false;
+  let hasSun = false;
 
   for (const block of parallel.horario || []) {
     const dia = block.dia;
     const bNum = block.bloque;
-    if (dia >= 0 && dia <= 6 && bNum >= 1 && bNum <= 16) {
+    if (dia >= 0 && dia <= 6 && bNum >= 1 && bNum <= 24) {
       dayMasks[dia] |= 1 << (bNum - 1);
       if (dia === 5) hasSat = true;
+      if (dia === 6) hasSun = true;
     }
   }
 
@@ -71,6 +74,7 @@ export function precomputeParallel(sigla: string, parallel: CourseParallel): Pre
     dayMasks,
     occupiedDays,
     hasSaturday: hasSat,
+    hasSunday: hasSun,
   };
 }
 
@@ -86,15 +90,17 @@ export function precomputeParallel(sigla: string, parallel: CourseParallel): Pre
  */
 export function evaluateScheduleCombination(
   parallels: Record<string, CourseParallel>,
-  considerSaturday = false
+  considerSaturday = false,
+  considerSunday = false
 ): ScheduleOptimizationMetrics {
   const parList = Object.values(parallels).filter(Boolean);
+  const totalDays = considerSunday ? 7 : (considerSaturday ? 6 : 5);
   if (parList.length === 0) {
     return {
       clashCount: 0,
       windowBlocks: 0,
-      freeDays: considerSaturday ? 6 : 5,
-      freeHalfDays: (considerSaturday ? 6 : 5) * 2,
+      freeDays: totalDays,
+      freeHalfDays: totalDays * 2,
     };
   }
 
@@ -102,7 +108,7 @@ export function evaluateScheduleCombination(
     .filter(([_, p]) => Boolean(p))
     .map(([sigla, p]) => precomputeParallel(sigla, p));
 
-  return evaluatePrecomputedCombination(precomputed, considerSaturday);
+  return evaluatePrecomputedCombination(precomputed, considerSaturday, considerSunday);
 }
 
 /**
@@ -110,9 +116,10 @@ export function evaluateScheduleCombination(
  */
 export function evaluatePrecomputedCombination(
   list: PrecomputedParallel[],
-  considerSaturday: boolean
+  considerSaturday: boolean,
+  considerSunday: boolean = false
 ): ScheduleOptimizationMetrics {
-  const totalDays = considerSaturday ? 6 : 5; // 0..4 (Mon-Fri) or 0..5 (Mon-Sat)
+  const totalDays = considerSunday ? 7 : (considerSaturday ? 6 : 5); // 0..4 (Mon-Fri), 0..5 (Mon-Sat) or 0..6 (Mon-Sun)
 
   // 1. Clash count (pairwise overlaps on same day and block)
   let clashCount = 0;
@@ -343,6 +350,7 @@ export function optimizeSchedule(options: OptimizeScheduleOptions): ScheduleOpti
 
   // Precompute parallels for all active courses
   let globalHasSaturday = false;
+  let globalHasSunday = false;
   const courseCandidates: Array<{
     sigla: string;
     parallels: PrecomputedParallel[];
@@ -353,6 +361,7 @@ export function optimizeSchedule(options: OptimizeScheduleOptions): ScheduleOpti
     const preList = rawList.map((p) => precomputeParallel(sigla, p));
     for (const item of preList) {
       if (item.hasSaturday) globalHasSaturday = true;
+      if (item.hasSunday) globalHasSunday = true;
     }
     courseCandidates.push({
       sigla,
@@ -369,9 +378,9 @@ export function optimizeSchedule(options: OptimizeScheduleOptions): ScheduleOpti
   let rawResults: PrecomputedParallel[][];
 
   if (totalCombinations <= 5000) {
-    rawResults = exhaustiveSearch(courseCandidates, globalHasSaturday, strategy);
+    rawResults = exhaustiveSearch(courseCandidates, globalHasSaturday, globalHasSunday, strategy);
   } else {
-    rawResults = beamSearch(courseCandidates, globalHasSaturday, strategy, 600);
+    rawResults = beamSearch(courseCandidates, globalHasSaturday, globalHasSunday, strategy, 800);
   }
 
   // Deduplicate and format results
@@ -387,7 +396,7 @@ export function optimizeSchedule(options: OptimizeScheduleOptions): ScheduleOpti
     if (seenSignatures.has(signature)) continue;
     seenSignatures.add(signature);
 
-    const metrics = evaluatePrecomputedCombination(combo, globalHasSaturday);
+    const metrics = evaluatePrecomputedCombination(combo, globalHasSaturday, globalHasSunday);
     const parallelsMap: Record<string, CourseParallel> = {};
     for (const cp of combo) {
       parallelsMap[cp.sigla] = cp.parallel;
@@ -422,6 +431,7 @@ export function optimizeSchedule(options: OptimizeScheduleOptions): ScheduleOpti
 function exhaustiveSearch(
   courseCandidates: Array<{ sigla: string; parallels: PrecomputedParallel[] }>,
   considerSaturday: boolean,
+  considerSunday: boolean,
   strategy: ScheduleOptimizationStrategy
 ): PrecomputedParallel[][] {
   const allCombos: PrecomputedParallel[][] = [];
@@ -445,8 +455,8 @@ function exhaustiveSearch(
 
   // Sort all combinations using the exact multi-criteria comparator
   allCombos.sort((a, b) => {
-    const mA = evaluatePrecomputedCombination(a, considerSaturday);
-    const mB = evaluatePrecomputedCombination(b, considerSaturday);
+    const mA = evaluatePrecomputedCombination(a, considerSaturday, considerSunday);
+    const mB = evaluatePrecomputedCombination(b, considerSaturday, considerSunday);
     return compareScheduleMetrics(mA, mB, strategy);
   });
 
@@ -461,8 +471,9 @@ function exhaustiveSearch(
 function beamSearch(
   courseCandidates: Array<{ sigla: string; parallels: PrecomputedParallel[] }>,
   considerSaturday: boolean,
+  considerSunday: boolean,
   strategy: ScheduleOptimizationStrategy,
-  beamWidth = 600
+  beamWidth = 800
 ): PrecomputedParallel[][] {
   // Sort courses by candidate count ascending (most constrained first)
   const sortedCourses = [...courseCandidates].sort(
@@ -480,7 +491,7 @@ function beamSearch(
     for (const partial of beam) {
       for (const par of course.parallels) {
         const nextCombo = [...partial, par];
-        const metrics = evaluatePrecomputedCombination(nextCombo, considerSaturday);
+        const metrics = evaluatePrecomputedCombination(nextCombo, considerSaturday, considerSunday);
         nextCandidates.push({ combo: nextCombo, metrics });
       }
     }
@@ -496,8 +507,8 @@ function beamSearch(
 
   // Final sort to guarantee top results
   beam.sort((a, b) => {
-    const mA = evaluatePrecomputedCombination(a, considerSaturday);
-    const mB = evaluatePrecomputedCombination(b, considerSaturday);
+    const mA = evaluatePrecomputedCombination(a, considerSaturday, considerSunday);
+    const mB = evaluatePrecomputedCombination(b, considerSaturday, considerSunday);
     return compareScheduleMetrics(mA, mB, strategy);
   });
 
