@@ -313,18 +313,41 @@ export function planFastestGraduation(
     }
   }
 
+  const courseBySiglaMap = new Map<string, Course>();
+  const knownSiglasSet = new Set<string>();
+  for (const c of allCourses) {
+    const norm = normalizeCourseSigla(c.sigla);
+    courseBySiglaMap.set(norm, c);
+    courseBySiglaMap.set(c.sigla, c);
+    knownSiglasSet.add(norm);
+  }
+
   const plannedSemesterOverrides: Record<string, number> = {};
+  const normalizedPlannedMap = new Map<string, number>();
   const scheduledSiglasSet = new Set<string>();
+  const semesterSctMap = new Map<number, number>();
+
+  const assignCourseToSemester = (sigla: string, sem: number, sct: number) => {
+    const prevSem = plannedSemesterOverrides[sigla];
+    if (prevSem !== undefined) {
+      semesterSctMap.set(prevSem, Math.max(0, (semesterSctMap.get(prevSem) || 0) - sct));
+    }
+    plannedSemesterOverrides[sigla] = sem;
+    const norm = normalizeCourseSigla(sigla);
+    normalizedPlannedMap.set(norm, sem);
+    scheduledSiglasSet.add(norm);
+    semesterSctMap.set(sem, (semesterSctMap.get(sem) || 0) + sct);
+  };
 
   // 1. Los ramos aprobados pertenecen a semestres históricos (< currentStartSemester o su semestre oficial)
   for (const course of allCourses) {
     if (isCourseApproved(course)) {
+      const sct = course.creditos_sct || 5;
       if (currentStartSemester > 1 && course.semestre >= currentStartSemester) {
-        plannedSemesterOverrides[course.sigla] = currentStartSemester - 1;
+        assignCourseToSemester(course.sigla, currentStartSemester - 1, sct);
       } else {
-        plannedSemesterOverrides[course.sigla] = course.semestre;
+        assignCourseToSemester(course.sigla, course.semestre, sct);
       }
-      scheduledSiglasSet.add(normalizeCourseSigla(course.sigla));
     }
   }
 
@@ -332,9 +355,9 @@ export function planFastestGraduation(
   let currentSemSct = 0;
   for (const course of allCourses) {
     if (isCourseInProgress(course) && !isCourseApproved(course)) {
-      plannedSemesterOverrides[course.sigla] = currentStartSemester;
-      scheduledSiglasSet.add(normalizeCourseSigla(course.sigla));
-      currentSemSct += course.creditos_sct || 5;
+      const sct = course.creditos_sct || 5;
+      assignCourseToSemester(course.sigla, currentStartSemester, sct);
+      currentSemSct += sct;
     }
   }
 
@@ -352,29 +375,22 @@ export function planFastestGraduation(
         clause.every((eq) => {
           const normEq = normalizeCourseSigla(eq.sigla);
           if (approvedSet.has(normEq)) return true;
-          const plannedSem = plannedSemesterOverrides[eq.sigla];
+          const plannedSem = normalizedPlannedMap.get(normEq) ?? plannedSemesterOverrides[eq.sigla];
           return plannedSem !== undefined && plannedSem < targetSemester;
         })
       );
       if (eqSatisfied) return true;
     }
 
-    const knownSiglas = new Set(allCourses.map((c) => normalizeCourseSigla(c.sigla)));
-
     // 2. Prerrequisitos estándar del plan
     for (const prereq of course.prerrequisitos) {
       if (!prereq) continue;
       const normPrereq = normalizeCourseSigla(prereq);
       if (approvedSet.has(normPrereq)) continue; // Aprobado históricamente
-      if (!knownSiglas.has(normPrereq)) continue; // Si es un prerrequisito externo no existente en la malla, omitir
+      if (!knownSiglasSet.has(normPrereq)) continue; // Si es un prerrequisito externo no existente en la malla, omitir
 
       // Debe haber sido programado y su semestre debe ser < targetSemester
-      const plannedSem =
-        plannedSemesterOverrides[prereq] ??
-        plannedSemesterOverrides[normPrereq] ??
-        Object.entries(plannedSemesterOverrides).find(
-          ([k]) => normalizeCourseSigla(k) === normPrereq
-        )?.[1];
+      const plannedSem = normalizedPlannedMap.get(normPrereq) ?? plannedSemesterOverrides[prereq];
 
       if (plannedSem === undefined || plannedSem >= targetSemester) {
         return false;
@@ -388,13 +404,8 @@ export function planFastestGraduation(
           if (!r || !r.sigla) return true;
           const rNorm = normalizeCourseSigla(r.sigla);
           if (approvedSet.has(rNorm)) return true;
-          if (!knownSiglas.has(rNorm)) return true;
-          const plannedSem =
-            plannedSemesterOverrides[r.sigla] ??
-            plannedSemesterOverrides[rNorm] ??
-            Object.entries(plannedSemesterOverrides).find(
-              ([k]) => normalizeCourseSigla(k) === rNorm
-            )?.[1];
+          if (!knownSiglasSet.has(rNorm)) return true;
+          const plannedSem = normalizedPlannedMap.get(rNorm) ?? plannedSemesterOverrides[r.sigla];
           return plannedSem !== undefined && plannedSem < targetSemester;
         })
       );
@@ -411,13 +422,7 @@ export function planFastestGraduation(
 
   while (remainingCourses.length > 0 && activeSemester <= maxSemestersAllowed) {
     // Calcular créditos ocupados en activeSemester por asignaturas en este semestre.
-    let alreadyAssignedSct = 0;
-    for (const [sigla, sem] of Object.entries(plannedSemesterOverrides)) {
-      if (sem === activeSemester) {
-        const c = allCourses.find((r) => r.sigla === sigla);
-        if (c) alreadyAssignedSct += c.creditos_sct || 5;
-      }
-    }
+    const alreadyAssignedSct = semesterSctMap.get(activeSemester) || 0;
     let availableSct = Math.max(0, creditLimit - alreadyAssignedSct);
 
     // Buscar candidatos elegibles para este semestre (prerrequisitos satisfechos en semestres anteriores)
@@ -455,8 +460,7 @@ export function planFastestGraduation(
       const courseSct = candidate.creditos_sct || 5;
       if (courseSct <= availableSct || scheduledInThisSem.length === 0) {
         // Asignar al semestre activo
-        plannedSemesterOverrides[candidate.sigla] = activeSemester;
-        scheduledSiglasSet.add(normalizeCourseSigla(candidate.sigla));
+        assignCourseToSemester(candidate.sigla, activeSemester, courseSct);
         scheduledInThisSem.push(candidate);
         availableSct -= courseSct;
       }
@@ -480,7 +484,7 @@ export function planFastestGraduation(
   if (remainingCourses.length > 0) {
     const fallbackSem = activeSemester;
     for (const c of remainingCourses) {
-      plannedSemesterOverrides[c.sigla] = fallbackSem;
+      assignCourseToSemester(c.sigla, fallbackSem, c.creditos_sct || 5);
     }
   }
 
@@ -505,17 +509,9 @@ export function planFastestGraduation(
       // y donde el ramo quepa dentro del creditLimit
       for (let s = currentStartSemester; s < currentSem; s++) {
         if (arePrerequisitesMetForSemester(c, s)) {
-          // Calcular SCT total ocupado en el semestre objetivo s
-          let sctInS = 0;
-          for (const [sigla, sem] of Object.entries(plannedSemesterOverrides)) {
-            if (sigla !== c.sigla && sem === s) {
-              const other = allCourses.find((r) => r.sigla === sigla);
-              if (other) sctInS += other.creditos_sct || 5;
-            }
-          }
-
+          const sctInS = semesterSctMap.get(s) || 0;
           if (sctInS + cSct <= creditLimit) {
-            plannedSemesterOverrides[c.sigla] = s;
+            assignCourseToSemester(c.sigla, s, cSct);
             compactionChanged = true;
             break;
           }
