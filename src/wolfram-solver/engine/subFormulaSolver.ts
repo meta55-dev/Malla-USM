@@ -302,7 +302,8 @@ export function computeBlockAverage(
  */
 export function computeBlockAverageWithScore(
   block: SubFormulaBlock,
-  uniformUnknownScore: number
+  uniformUnknownScore: number,
+  clampTo100: boolean = true
 ): number {
   const evals = block.evaluations || [];
   const totalCount = block.count || evals.length;
@@ -340,7 +341,10 @@ export function computeBlockAverageWithScore(
     rawAvg = sum;
   }
 
-  return Math.min(100, Math.max(0, rawAvg + effectiveBonus));
+  const withBonus = rawAvg + effectiveBonus;
+  return clampTo100
+    ? Math.min(100, Math.max(0, withBonus))
+    : Math.max(0, withBonus);
 }
 
 /**
@@ -461,18 +465,19 @@ export function solveGlobalFormulaUniformGrade(
   const evalFormulaWithX = (X: number): number => {
     let baseNf = 0;
     if (pwRule && baseIdx !== -1 && targetIdx !== -1) {
-      const pc = computeBlockAverageWithScore(blocks[baseIdx], X);
-      const pt = computeBlockAverageWithScore(blocks[targetIdx], X);
+      const pc = computeBlockAverageWithScore(blocks[baseIdx], X, false);
+      const pt = computeBlockAverageWithScore(blocks[targetIdx], X, false);
       const alpha = computePiecewiseAlpha(pc, pwRule);
       baseNf = pc * (1 - alpha) + alpha * pt;
     } else {
       for (let i = 0; i < blocks.length; i++) {
         const w = normalizedWeights[i];
-        const avg = computeBlockAverageWithScore(blocks[i], X);
+        const avg = computeBlockAverageWithScore(blocks[i], X, false);
         baseNf += w * avg;
       }
     }
-    return Math.min(100, Math.max(0, baseNf * multiplier + globalBonus));
+    const finalVal = baseNf * multiplier + globalBonus;
+    return Math.max(0, finalVal);
   };
 
   if (totalUnknowns === 0) {
@@ -482,6 +487,11 @@ export function solveGlobalFormulaUniformGrade(
 
   if (evalFormulaWithX(0) >= passingGrade) {
     return 0;
+  }
+
+  // If even score 300 cannot reach passing grade, it is mathematically impossible
+  if (evalFormulaWithX(300) < passingGrade) {
+    return null;
   }
 
   // Bisection search on [0, 300]
@@ -680,14 +690,21 @@ export function solveSubFormulaCourse(
   let penaltyGrade: number | null = null;
 
   if (penaltyRuleApplies) {
-    const failingBlock = blockResults.find(
+    const definitelyFailingBlock = blockResults.find(
       (b) =>
         b.minGradeRequired !== null &&
-        (b.currentAverage === null || b.currentAverage < b.minGradeRequired)
+        b.unknownCount === 0 &&
+        b.currentAverage !== null &&
+        b.currentAverage < b.minGradeRequired
     );
-    if (failingBlock) {
+    if (definitelyFailingBlock) {
       isPenaltyTriggered = true;
-      const minBlockAvg = Math.min(...currentBlockAveragesForPenalty);
+      const failingBlockAverages = blockResults
+        .filter((b) => b.minGradeRequired !== null && b.currentAverage !== null)
+        .map((b) => b.currentAverage!);
+      const minBlockAvg = failingBlockAverages.length > 0
+        ? Math.min(...failingBlockAverages)
+        : formulaFinalGrade;
       penaltyGrade = roundTo(minBlockAvg, 2);
     }
   }
@@ -739,6 +756,8 @@ export function solveSubFormulaCourse(
       status = 'FAILED';
       if (isPenaltyTriggered) {
         const failed = blockResults.find(
+          (b) => b.minGradeRequired !== null && b.currentAverage === penaltyGrade
+        ) || blockResults.find(
           (b) => b.minGradeRequired !== null && (b.currentAverage ?? 0) < b.minGradeRequired
         );
         diagnosticMessage = `Reprobado por regla de penalización USM y requisito de aprobación: ${failed?.blockName} (${failed?.blockCode}) promedió ${failed?.currentAverage ?? 0} (mínimo exigido: ${failed?.minGradeRequired}). Nota final penalizada: ${currentFinalGrade}.`;
@@ -751,7 +770,10 @@ export function solveSubFormulaCourse(
 
     const allMinsMetWithZero = blockResults.every((b) => {
       if (b.minGradeRequired === null) return true;
-      return (b.requiredForBlockMin ?? 0) <= 0;
+      if (b.requiredForBlockMin === null) {
+        return (b.currentAverage ?? 0) >= b.minGradeRequired;
+      }
+      return b.requiredForBlockMin <= 0;
     });
 
     if (minPossiblePoints >= passingGrade && allMinsMetWithZero) {
@@ -869,45 +891,49 @@ export function computeGlobalExamScenarios(
         );
 
   // 1. MAT 70/30: NF = 0.70 * NP + 0.30 * E
-  const reqMat = roundTo(Math.max(0, (passingGrade - 0.7 * np) / 0.3), 1);
+  const isApprovedMat = np >= passingGrade;
+  const isEligibleMat = np >= 45 && !isApprovedMat;
+  const reqMat = isApprovedMat ? 0 : roundTo(Math.max(0, (passingGrade - 0.7 * np) / 0.3), 1);
   const matScenario: GlobalExamScenarioResult = {
     modality: 'mat_70_30',
     label: 'Global Matemática (70% NP + 30% Global)',
     formulaDescription: 'NF = 0,70 × NP + 0,30 × E (Derecho a Global con 45 ≤ NP < 55)',
     presentationGrade: roundTo(np, 1),
-    isEligibleByRange: np >= 45 && np < passingGrade,
-    eligibilityNote:
-      np >= passingGrade
-        ? 'Ya tienes NP ≥ 55.'
-        : np >= 45
-        ? 'Cumples rango 45 ≤ NP < 55 para rendir Certamen Global.'
-        : 'NP actual bajo 45 (sube tus notas restantes para entrar al rango 45–54).',
-    requiredExamScore: reqMat,
-    isReachable: reqMat <= 100,
+    isEligibleByRange: isEligibleMat,
+    eligibilityNote: isApprovedMat
+      ? 'Ya tienes NP ≥ 55 (Aprobado sin requerir examen global).'
+      : isEligibleMat
+      ? 'Cumples rango 45 ≤ NP < 55 para rendir Certamen Global.'
+      : 'NP actual bajo 45 (sube tus notas restantes para entrar al rango 45–54).',
+    requiredExamScore: isApprovedMat ? 0 : (isEligibleMat ? reqMat : null),
+    isReachable: isApprovedMat ? true : (isEligibleMat && reqMat <= 100),
     projectFinalGrade: (examScore: number) => roundTo(0.7 * np + 0.3 * examScore, 1),
   };
 
   // 2. FIS 60/40: NF = 0.60 * PS + 0.40 * CG (con CG >= 50)
+  const isApprovedFis = np >= passingGrade;
+  const isEligibleFis = np >= 50 && !isApprovedFis;
   const rawFis = (passingGrade - 0.6 * np) / 0.4;
-  const reqFis = roundTo(Math.max(50, rawFis), 1);
+  const reqFis = isApprovedFis ? 0 : roundTo(Math.max(50, rawFis), 1);
   const fisScenario: GlobalExamScenarioResult = {
     modality: 'fis_60_40',
     label: 'Global Física (60% PS + 40% Global, mín. 50)',
     formulaDescription: 'NF = 0,60 × PS + 0,40 × CG (Exige PS ≥ 50 y nota CG ≥ 50)',
     presentationGrade: roundTo(np, 1),
-    isEligibleByRange: np >= 50 && np < passingGrade,
-    eligibilityNote:
-      np >= passingGrade
-        ? 'Ya tienes PS ≥ 55.'
-        : np >= 50
-        ? 'Cumples PS ≥ 50 para rendir Certamen Global.'
-        : 'En Física se exige promedio semestral PS ≥ 50 para derecho a Global.',
-    requiredExamScore: reqFis,
-    isReachable: reqFis <= 100,
-    projectFinalGrade: (examScore: number) =>
-      examScore < 50
-        ? roundTo(Math.min(examScore, 54), 1)
-        : roundTo(0.6 * np + 0.4 * examScore, 1),
+    isEligibleByRange: isEligibleFis,
+    eligibilityNote: isApprovedFis
+      ? 'Ya tienes PS ≥ 55 (Aprobado sin requerir examen global).'
+      : isEligibleFis
+      ? 'Cumples PS ≥ 50 para rendir Certamen Global.'
+      : 'En Física se exige promedio semestral PS ≥ 50 para derecho a Global.',
+    requiredExamScore: isApprovedFis ? 0 : (isEligibleFis ? reqFis : null),
+    isReachable: isApprovedFis ? true : (isEligibleFis && reqFis <= 100),
+    projectFinalGrade: (examScore: number) => {
+      const weighted = 0.6 * np + 0.4 * examScore;
+      return examScore < 50
+        ? roundTo(Math.min(54, weighted), 1)
+        : roundTo(weighted, 1);
+    },
   };
 
   // 3. Reemplazo del peor certamen/evaluación en el bloque principal (PC o bloque 0)
@@ -921,16 +947,22 @@ export function computeGlobalExamScenarios(
   );
   const targetBlock = blocks[targetBlockIdx];
 
-  let worstEvalIdx = 0;
+  let worstEvalIdx = -1;
   let worstScore: number | null = null;
   if (targetBlock && targetBlock.evaluations.length > 0) {
     targetBlock.evaluations.forEach((ev, idx) => {
-      const val = ev.score !== null && ev.score !== undefined ? Number(ev.score) : 0;
-      if (worstScore === null || val < worstScore) {
-        worstScore = val;
-        worstEvalIdx = idx;
+      if (ev.score !== null && ev.score !== undefined && !isNaN(ev.score)) {
+        const val = Number(ev.score);
+        if (worstScore === null || val < worstScore) {
+          worstScore = val;
+          worstEvalIdx = idx;
+        }
       }
     });
+  }
+
+  if (worstEvalIdx === -1) {
+    worstEvalIdx = 0;
   }
 
   const evalWithReplacedScore = (examScore: number): number => {
