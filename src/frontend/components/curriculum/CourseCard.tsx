@@ -81,12 +81,12 @@ export function CourseCard({
       return;
     }
 
-    if (status === "LOCKED") {
+    if (status === "LOCKED" || status === "IN_PROGRESS") {
       onOpenDetail(course);
       return;
     }
 
-    if (status === "AVAILABLE" || status === "IN_PROGRESS" || status === "APPROVED") {
+    if (status === "AVAILABLE" || status === "APPROVED") {
       toggleCourseApproval(course.sigla);
     }
   };
@@ -98,6 +98,14 @@ export function CourseCard({
   const handleToggleEnroll = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (status === "IN_PROGRESS") {
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm(
+          `¿Estás seguro de desinscribir ${course.sigla}? Se perderá el avance de notas y evaluaciones de este semestre.`
+        )
+      ) {
+        return;
+      }
       unenrollCourse(course.sigla);
     } else {
       enrollCourse(course.sigla);

@@ -212,4 +212,26 @@ console.log(`  ✓ Beam search solved 16,384 combination space in ${tElapsedLarg
 console.log('    Top 1 metrics:', JSON.stringify(resultsBeam[0].metrics));
 console.log('    Top 1 Badges:', resultsBeam[0].summaryBadges.join(' • '));
 
+// Test 7: Vespertino Blocks (17-20) & Sunday Schedule Optimization
+console.log('\nTest 7: Vespertino Blocks (17-20) & Sunday Evaluation');
+const parVespA = makeParallel('IWI131', '100', [
+  [0, 17], // Monday block 17
+  [0, 18], // Monday block 18
+]);
+const parVespB = makeParallel('MAT021', '100', [
+  [0, 18], // Monday block 18 (clashes with IWI131 block 18)
+  [0, 19], // Monday block 19
+]);
+const mVespClash = evaluateScheduleCombination({ IWI131: parVespA, MAT021: parVespB }, false, false);
+assert(mVespClash.clashCount === 1, `Expected 1 clash on block 18, got ${mVespClash.clashCount}`);
+
+const parSunday = makeParallel('DEPORTES', '1', [
+  [6, 3], // Sunday block 3
+  [6, 4], // Sunday block 4
+]);
+const mSun = evaluateScheduleCombination({ DEPORTES: parSunday }, false, true);
+assert(mSun.freeDays === 6, `Expected 6 free days when considering Sunday, got ${mSun.freeDays}`);
+assert(mSun.clashCount === 0, `Expected 0 clashes on Sunday, got ${mSun.clashCount}`);
+console.log('  ✓ Vespertino blocks and Sunday evaluation verified successfully.');
+
 console.log('\nALL SCHEDULE OPTIMIZER TESTS PASSED SUCCESSFULLY! ✓');

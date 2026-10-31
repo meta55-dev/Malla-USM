@@ -178,7 +178,7 @@ export function solveCourseStatus(
     if (minGrade !== null) {
       if (groupUnknownWeight > 0.0001) {
         // X_{grupo_g} = (M_g - sum_{K_g} w_e * N_e) / sum_{U_g} w_e
-        requiredGradeForMin = (minGrade - groupKnownPoints) / groupUnknownWeight;
+        requiredGradeForMin = Math.max(0, (minGrade - groupKnownPoints) / groupUnknownWeight);
         meetsMinGrade = requiredGradeForMin <= 100;
       } else {
         // All evaluations in this group have been taken
@@ -226,7 +226,7 @@ export function solveCourseStatus(
   // 3. Global algebraic solve: X_global = (55 - P_acum) / alpha_rest
   let requiredGlobalGrade: number | null = null;
   if (totalRemainingWeight > 0.0001) {
-    requiredGlobalGrade = (passingTarget - totalAccumulatedPoints) / totalRemainingWeight;
+    requiredGlobalGrade = Math.max(0, (passingTarget - totalAccumulatedPoints) / totalRemainingWeight);
   }
 
   // 4. Evaluate binding constraints (Global vs Group Minimums)
@@ -251,7 +251,7 @@ export function solveCourseStatus(
       }
     }
 
-    effectiveRequiredGrade = maxRequired;
+    effectiveRequiredGrade = Math.max(0, maxRequired);
 
     // Populate required uniform grade in unknown evaluations
     for (const u of unknownEvaluations) {
@@ -515,7 +515,7 @@ export function rebalanceSliders(
   }
 
   const isFeasible =
-    (otherUnknownsRequiredGrade === null || (otherUnknownsRequiredGrade >= 0 && otherUnknownsRequiredGrade <= 100)) &&
+    (otherUnknownsRequiredGrade === null || otherUnknownsRequiredGrade <= 100) &&
     meetsAllConstraints;
 
   return {

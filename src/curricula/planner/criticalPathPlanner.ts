@@ -1,11 +1,12 @@
 import { Course } from '@/shared/types/academic';
 import { formatUsmSigla } from '@/curricula/services/sigaService';
+import { validateGraphAcyclic } from '@/curricula/prerequisites/graphUnlock';
 
 /**
  * Normaliza una sigla a formato estándar USM en mayúsculas (ej. "MAT021" -> "MAT-021").
  */
 export function normalizeCourseSigla(sigla: string): string {
-  if (!sigla) return '';
+  if (!sigla || typeof sigla !== 'string') return '';
   return formatUsmSigla(sigla.trim().toUpperCase());
 }
 
@@ -64,6 +65,7 @@ function getDirectDependents(
     if (Array.isArray(c.requisitos_dnf)) {
       return c.requisitos_dnf.some((clause) =>
         clause.some((r) => {
+          if (!r || !r.sigla || typeof r.sigla !== 'string') return false;
           const rNorm = normalizeCourseSigla(r.sigla);
           return rNorm === normTarget || r.sigla.trim().toUpperCase() === rawTarget;
         })
@@ -357,10 +359,14 @@ export function planFastestGraduation(
       if (eqSatisfied) return true;
     }
 
+    const knownSiglas = new Set(allCourses.map((c) => normalizeCourseSigla(c.sigla)));
+
     // 2. Prerrequisitos estándar del plan
     for (const prereq of course.prerrequisitos) {
+      if (!prereq) continue;
       const normPrereq = normalizeCourseSigla(prereq);
       if (approvedSet.has(normPrereq)) continue; // Aprobado históricamente
+      if (!knownSiglas.has(normPrereq)) continue; // Si es un prerrequisito externo no existente en la malla, omitir
 
       // Debe haber sido programado y su semestre debe ser < targetSemester
       const plannedSem =
@@ -379,8 +385,10 @@ export function planFastestGraduation(
     if (Array.isArray(course.requisitos_dnf) && course.requisitos_dnf.length > 0) {
       const anyClauseMet = course.requisitos_dnf.some((clause) =>
         clause.every((r) => {
+          if (!r || !r.sigla) return true;
           const rNorm = normalizeCourseSigla(r.sigla);
           if (approvedSet.has(rNorm)) return true;
+          if (!knownSiglas.has(rNorm)) return true;
           const plannedSem =
             plannedSemesterOverrides[r.sigla] ??
             plannedSemesterOverrides[rNorm] ??
@@ -390,7 +398,7 @@ export function planFastestGraduation(
           return plannedSem !== undefined && plannedSem < targetSemester;
         })
       );
-      if (anyClauseMet) return true;
+      if (!anyClauseMet) return false;
     }
 
     return true;
@@ -445,7 +453,7 @@ export function planFastestGraduation(
 
     for (const candidate of eligibleCandidates) {
       const courseSct = candidate.creditos_sct || 5;
-      if (courseSct <= availableSct) {
+      if (courseSct <= availableSct || scheduledInThisSem.length === 0) {
         // Asignar al semestre activo
         plannedSemesterOverrides[candidate.sigla] = activeSemester;
         scheduledSiglasSet.add(normalizeCourseSigla(candidate.sigla));
@@ -665,6 +673,11 @@ export function resolveAllPlanConflicts(
   approvedSiglas: Set<string> | string[],
   plannedSemesterOverrides: Record<string, number>
 ): Record<string, number> {
+  const graphCheck = validateGraphAcyclic(allCourses);
+  if (!graphCheck.isAcyclic) {
+    console.warn('Ciclo detectado en las dependencias. No se pueden resolver automáticamente:', graphCheck.cycleNodes);
+    return plannedSemesterOverrides;
+  }
   const newOverrides: Record<string, number> = { ...plannedSemesterOverrides };
 
   let iterations = 0;

@@ -169,14 +169,22 @@ export function SemesterScheduleView() {
         if (targetP !== selectedPeriod) {
           setSelectedPeriod(targetP);
         }
-        const cat = await getPeriodCatalog(
-          selectedSede,
-          selectedJornada,
-          targetP || undefined
-        );
-        if (!cancelled) {
-          setPeriodCatalog(cat.courses);
+        if (targetP) {
+          const cat = await getPeriodCatalog(
+            selectedSede,
+            selectedJornada,
+            targetP
+          );
+          if (!cancelled) {
+            setPeriodCatalog(cat.courses);
+          }
+        } else {
+          setPeriodCatalog([]);
         }
+      })
+      .catch((err) => {
+        console.warn("Error cargando periodos de horario:", err);
+        if (!cancelled) setPeriods([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -325,12 +333,14 @@ export function SemesterScheduleView() {
     gridMap,
     conflicts,
     hasSaturday,
+    hasSunday,
     totalIndividualBlocks,
     activeDaysCount,
     assignedCoursesCount,
   } = React.useMemo(() => {
     const map: Record<string, ScheduledCellEntry[]> = {};
     let saturdayUsed = false;
+    let sundayUsed = false;
     const uniqueDayBlockSet = new Set<string>();
     const activeDaysSet = new Set<number>();
     let assignedCount = 0;
@@ -407,12 +417,13 @@ export function SemesterScheduleView() {
           sigla;
 
         for (const pairObj of USM_BLOCK_PAIRS) {
-          for (let dia = 0; dia < 6; dia++) {
+          for (let dia = 0; dia < 7; dia++) {
             const matchingBlock = parallel.horario.find(
               (b) => b.dia === dia && pairObj.blocks.includes(b.bloque)
             );
             if (matchingBlock) {
               if (dia === 5) saturdayUsed = true;
+              if (dia === 6) sundayUsed = true;
               const cellKey = `${dia}-${pairObj.pair}`;
               if (!map[cellKey]) map[cellKey] = [];
               map[cellKey].push({
@@ -432,10 +443,15 @@ export function SemesterScheduleView() {
       }
     }
 
-    // Check if Saturday is used by existing blocks or could be used by any parallel
+    // Check if Saturday / Sunday are used by existing blocks or could be used by any parallel
     const saturdayPossible = enrolledSiglas.some((sigla) =>
       (parallelsByCourse[sigla] || []).some((p) =>
         p.horario?.some((b) => b.dia === 5)
+      )
+    );
+    const sundayPossible = enrolledSiglas.some((sigla) =>
+      (parallelsByCourse[sigla] || []).some((p) =>
+        p.horario?.some((b) => b.dia === 6)
       )
     );
 
@@ -462,6 +478,7 @@ export function SemesterScheduleView() {
       gridMap: map,
       conflicts: conflictList,
       hasSaturday: saturdayUsed || saturdayPossible,
+      hasSunday: sundayUsed || sundayPossible,
       totalIndividualBlocks: uniqueDayBlockSet.size,
       activeDaysCount: activeDaysSet.size,
       assignedCoursesCount: assignedCount,
@@ -533,6 +550,11 @@ export function SemesterScheduleView() {
     });
     if (results.length > 0) {
       handleApplyCombination(results[0]);
+      if (results[0].clashCount > 0 && typeof window !== "undefined") {
+        window.alert(
+          `Se aplicó la mejor combinación posible, pero contiene ${results[0].clashCount} tope(s) de horario inevitable(s). Puedes revisar opciones en el Optimizador.`
+        );
+      }
     } else {
       const occupied = new Set<string>();
       for (const sigla of enrolledSiglas) {
@@ -558,7 +580,11 @@ export function SemesterScheduleView() {
     }
   };
 
-  const visibleDays = hasSaturday ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4];
+  const visibleDays = hasSunday
+    ? [0, 1, 2, 3, 4, 5, 6]
+    : hasSaturday
+    ? [0, 1, 2, 3, 4, 5]
+    : [0, 1, 2, 3, 4];
   const weeklyChronologicalHours = (
     (totalIndividualBlocks * 35) /
     60
@@ -577,15 +603,41 @@ export function SemesterScheduleView() {
   };
 
   const handleExportIcs = () => {
+    const escapeIcsText = (str: string) =>
+      (str || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/;/g, "\\;")
+        .replace(/,/g, "\\,")
+        .replace(/\r?\n/g, "\\n");
+
     const lines: string[] = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
       "PRODID:-//Malla USM//Horario Semestral SIGA//ES",
       "CALSCALE:GREGORIAN",
+      "BEGIN:VTIMEZONE",
+      "TZID:America/Santiago",
+      "X-LIC-LOCATION:America/Santiago",
+      "BEGIN:STANDARD",
+      "TZOFFSETFROM:-0300",
+      "TZOFFSETTO:-0400",
+      "TZNAME:CLT",
+      "DTSTART:19700405T000000",
+      "RRULE:FREQ=YEARLY;BYMONTH=4;BYDAY=1SU",
+      "END:STANDARD",
+      "BEGIN:DAYLIGHT",
+      "TZOFFSETFROM:-0400",
+      "TZOFFSETTO:-0300",
+      "TZNAME:CLST",
+      "DTSTART:19700906T000000",
+      "RRULE:FREQ=YEARLY;BYMONTH=9;BYDAY=1SU",
+      "END:DAYLIGHT",
+      "END:VTIMEZONE",
     ];
 
     // Base Monday of current week
     const now = new Date();
+    const dtStampUtc = now.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
     const dayOfWeek = now.getDay(); // 0=Sun..6=Sat
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const baseMonday = new Date(
@@ -604,7 +656,7 @@ export function SemesterScheduleView() {
 
     for (const pairObj of USM_BLOCK_PAIRS) {
       const [startStr, endStr] = pairObj.time.split(" - ").map((s) => s.trim());
-      for (let dia = 0; dia < 6; dia++) {
+      for (const dia of visibleDays) {
         const entries = (gridMap[`${dia}-${pairObj.pair}`] || []).filter(
           (e) => !e.isPreview
         );
@@ -617,19 +669,18 @@ export function SemesterScheduleView() {
           lines.push(
             `UID:${entry.sigla}-${entry.paralelo}-${dia}-${pairObj.pair}@malla-usm`
           );
-          lines.push(`DTSTART:${dtStart}`);
-          lines.push(`DTEND:${dtEnd}`);
+          lines.push(`DTSTAMP:${dtStampUtc}`);
+          lines.push(`DTSTART;TZID=America/Santiago:${dtStart}`);
+          lines.push(`DTEND;TZID=America/Santiago:${dtEnd}`);
           lines.push("RRULE:FREQ=WEEKLY;COUNT=17");
           lines.push(
-            `SUMMARY:${entry.sigla} (${entry.tipo}) - Par. ${entry.paralelo}`
+            `SUMMARY:${escapeIcsText(`${entry.sigla} (${entry.tipo}) - Par. ${entry.paralelo}`)}`
           );
           lines.push(
-            `DESCRIPTION:${entry.nombre}\\nProfesor: ${
-              entry.profesor || "Por definir"
-            }`
+            `DESCRIPTION:${escapeIcsText(`${entry.nombre}\nProfesor: ${entry.profesor || "Por definir"}`)}`
           );
           if (entry.sala) {
-            lines.push(`LOCATION:Sala ${entry.sala} (${selectedSede})`);
+            lines.push(`LOCATION:${escapeIcsText(`Sala ${entry.sala} (${selectedSede})`)}`);
           }
           lines.push("END:VEVENT");
         }
@@ -726,7 +777,7 @@ export function SemesterScheduleView() {
               </select>
 
               {/* Periodo Selector */}
-              {periods.length > 0 && (
+              {periods.length > 0 ? (
                 <select
                   value={selectedPeriod}
                   onChange={(e) => setSelectedPeriod(e.target.value)}
@@ -739,7 +790,27 @@ export function SemesterScheduleView() {
                     </option>
                   ))}
                 </select>
-              )}
+              ) : !loading ? (
+                <div className="h-8 px-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-medium flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>Sin periodos disponibles</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoading(true);
+                      getSchedulePeriods(selectedSede, selectedJornada)
+                        .then((pList) => {
+                          setPeriods(pList);
+                          if (pList.length > 0) setSelectedPeriod(pList[0]);
+                        })
+                        .finally(() => setLoading(false));
+                    }}
+                    className="underline hover:text-amber-950 dark:hover:text-amber-100 ml-1 font-bold"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              ) : null}
 
               {enrolledSiglas.length > 0 && (
                 <>
@@ -1439,7 +1510,17 @@ export function SemesterScheduleView() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => unenrollCourse(sigla)}
+                        onClick={() => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              `¿Estás seguro de quitar ${sigla} del semestre? Se desvinculará el horario asignado.`
+                            )
+                          ) {
+                            return;
+                          }
+                          unenrollCourse(sigla);
+                        }}
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
                         title="Quitar asignatura del semestre"
                       >

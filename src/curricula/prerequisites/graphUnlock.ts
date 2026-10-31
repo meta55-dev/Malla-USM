@@ -5,6 +5,7 @@ import { formatUsmSigla } from '@/curricula/services/sigaService';
  * Normaliza una sigla a formato estándar con guion y mayúsculas (ej. "MAT021" -> "MAT-021").
  */
 function normSigla(s: string): string {
+  if (!s || typeof s !== 'string') return '';
   return formatUsmSigla(s.trim().toUpperCase());
 }
 
@@ -37,26 +38,36 @@ export function getMissingPrerequisites(
   }
 
   // 2. Evaluar prerrequisitos estándar del plan
-  const baseMissing = course.prerrequisitos.filter(
-    (req) => !approvedSet.has(req.trim().toUpperCase()) && !approvedSet.has(normSigla(req))
-  );
-  if (baseMissing.length === 0) {
-    return [];
-  }
+  const baseMissing = course.prerrequisitos
+    .filter((req) => req && typeof req === 'string')
+    .filter(
+      (req) => !approvedSet.has(req.trim().toUpperCase()) && !approvedSet.has(normSigla(req))
+    );
 
   // 3. Evaluar cláusulas disyuntivas (OR) de SIGA (`requisitos_dnf`) si existen
   if (Array.isArray(course.requisitos_dnf) && course.requisitos_dnf.length > 0) {
+    let anyClauseMet = false;
     for (const clause of course.requisitos_dnf) {
       if (!Array.isArray(clause) || clause.length === 0) continue;
       const clauseMissing = clause
+        .filter((r) => Boolean(r && r.sigla))
         .map((r) => normSigla(r.sigla))
-        .filter((s) => s !== normSigla(course.sigla) && !approvedSet.has(s));
+        .filter((s) => s && s !== normSigla(course.sigla) && !approvedSet.has(s));
 
       // Si alguna cláusula OR se cumple por completo, el ramo queda disponible
       if (clauseMissing.length === 0) {
-        return [];
+        anyClauseMet = true;
+        break;
       }
     }
+    if (!anyClauseMet) {
+      const firstClauseMissing = course.requisitos_dnf[0]
+        ?.filter((r) => Boolean(r && r.sigla))
+        ?.map((r) => normSigla(r.sigla))
+        ?.filter((s) => s && !approvedSet.has(s)) || [];
+      return Array.from(new Set([...baseMissing, ...firstClauseMissing]));
+    }
+    return [];
   }
 
   return baseMissing;

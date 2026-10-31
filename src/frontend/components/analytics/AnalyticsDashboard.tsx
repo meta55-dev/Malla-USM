@@ -186,7 +186,9 @@ export function AnalyticsDashboard() {
             <div className="flex items-center gap-2 mt-2">
               <Badge
                 variant={
-                  stats.gpa >= 70
+                  stats.gpa <= 0
+                    ? "outline"
+                    : stats.gpa >= 70
                     ? "success"
                     : stats.gpa >= 55
                     ? "usm"
@@ -194,7 +196,9 @@ export function AnalyticsDashboard() {
                 }
                 className="text-[10px]"
               >
-                {stats.gpa >= 70
+                {stats.gpa <= 0
+                  ? "Sin Calificaciones"
+                  : stats.gpa >= 70
                   ? "Distinción Máxima"
                   : stats.gpa >= 55
                   ? "Aprobado Regular"

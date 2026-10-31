@@ -151,7 +151,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
           activePlanId: planId,
           curriculum: plan,
           selectedCourseSigla: null,
-          customMaxSemester: Math.max(plan.semestres_totales || 11, get().customMaxSemester),
+          customMaxSemester: Math.max(plan.semestres_totales || 11, Number(get().customMaxSemester) || 11),
         });
       },
 
@@ -244,7 +244,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
           }
         }
 
-        let maxSem = Math.max(customMaxSemester, targetSem);
+        let maxSem = Math.max(Number(customMaxSemester) || 11, targetSem);
         for (const s of Object.values(newOverrides)) {
           if (s > maxSem) maxSem = s;
         }
@@ -269,7 +269,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
           plannedSemesterOverrides
         );
 
-        let maxSem = customMaxSemester;
+        let maxSem = Number(customMaxSemester) || 11;
         for (const s of Object.values(sanitized)) {
           if (s > maxSem) maxSem = s;
         }
@@ -746,7 +746,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
 
       getStatistics: (): AcademicStatistics => {
         const { curriculum, approvedCourses, inProgressCourses } = get();
-        const ramos = curriculum.ramos;
+        const ramos = curriculum.ramos || [];
 
         let sctTotal = 0;
         let usmTotal = 0;
@@ -754,25 +754,33 @@ export const useAcademicStore = create<AcademicStoreState>()(
         let usmApproved = 0;
         let gradeSum = 0;
         let creditsWithGrade = 0;
+        let approvedInPlanCount = 0;
 
         for (const r of ramos) {
-          const sct = r.creditos_sct || 0;
+          const sct = r.creditos_sct || (r.creditos_usm ? Math.round(r.creditos_usm * 1.67) : 0);
           const usm = r.creditos_usm || 0;
           sctTotal += sct;
           usmTotal += usm;
 
           const record = approvedCourses[r.sigla.toUpperCase()];
           if (record) {
+            approvedInPlanCount++;
             sctApproved += sct;
             usmApproved += usm;
             if (record.grade !== undefined && !isNaN(record.grade)) {
-              gradeSum += record.grade * sct;
-              creditsWithGrade += sct;
+              const weight = sct > 0 ? sct : (usm > 0 ? usm : 1);
+              gradeSum += record.grade * weight;
+              creditsWithGrade += weight;
             }
           }
         }
 
-        const percentProgress = sctTotal > 0 ? (sctApproved / sctTotal) * 100 : 0;
+        const percentProgress =
+          sctTotal > 0
+            ? (sctApproved / sctTotal) * 100
+            : usmTotal > 0
+            ? (usmApproved / usmTotal) * 100
+            : 0;
         const gpa = creditsWithGrade > 0 ? gradeSum / creditsWithGrade : 0;
 
         return {
@@ -780,9 +788,9 @@ export const useAcademicStore = create<AcademicStoreState>()(
           sctCreditsTotal: sctTotal,
           usmCreditsApproved: usmApproved,
           usmCreditsTotal: usmTotal,
-          percentProgress: Math.round(percentProgress * 10) / 10,
+          percentProgress: Math.min(100, Math.round(percentProgress * 10) / 10),
           gpa: Math.round(gpa * 10) / 10,
-          approvedCoursesCount: Object.keys(approvedCourses).length,
+          approvedCoursesCount: approvedInPlanCount,
           inProgressCoursesCount: Object.keys(inProgressCourses).length,
           totalCoursesCount: ramos.length,
         };
@@ -808,7 +816,24 @@ export const useAcademicStore = create<AcademicStoreState>()(
     }),
     {
       name: 'sansano-academic-tracker-v1',
+      version: 1,
       storage: createJSONStorage(getSafeStorage),
+      migrate: (persistedState: any, version: number) => {
+        if (!persistedState) return persistedState;
+        if (
+          persistedState.customMaxSemester === undefined ||
+          persistedState.customMaxSemester === null ||
+          isNaN(Number(persistedState.customMaxSemester))
+        ) {
+          persistedState.customMaxSemester = 11;
+        } else {
+          persistedState.customMaxSemester = Number(persistedState.customMaxSemester);
+        }
+        if (!persistedState.plannedSemesterOverrides || typeof persistedState.plannedSemesterOverrides !== 'object') {
+          persistedState.plannedSemesterOverrides = {};
+        }
+        return persistedState;
+      },
       partialize: (state) => ({
         activePlanId: state.activePlanId,
         curriculum: state.curriculum,
@@ -826,7 +851,14 @@ export const useAcademicStore = create<AcademicStoreState>()(
           curriculumService
             .getCurriculum(state.activePlanId)
             .then((plan) => {
-              useAcademicStore.setState({ curriculum: plan });
+              if (
+                plan &&
+                plan.codigo_plan === state.activePlanId &&
+                Array.isArray(plan.ramos) &&
+                plan.ramos.length > 0
+              ) {
+                useAcademicStore.setState({ curriculum: plan });
+              }
             })
             .catch(() => {
               // Keeps persisted curriculum if offline

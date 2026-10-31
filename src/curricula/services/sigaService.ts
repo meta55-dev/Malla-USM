@@ -130,6 +130,8 @@ export const USM_BLOCK_PAIRS = [
   { pair: '11-12', blocks: [11, 12], time: '16:05 - 17:15' },
   { pair: '13-14', blocks: [13, 14], time: '17:30 - 18:40' },
   { pair: '15-16', blocks: [15, 16], time: '18:55 - 20:05' },
+  { pair: '17-18', blocks: [17, 18], time: '20:15 - 21:25' },
+  { pair: '19-20', blocks: [19, 20], time: '21:35 - 22:45' },
 ];
 
 /**
