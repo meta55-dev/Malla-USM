@@ -281,7 +281,14 @@ class CurriculumService {
     if (!this.cache.has(planId)) {
       await this.getCatalogPlans();
     }
-    const plan = this.cache.get(planId) || this.cache.get('7313-2014')!;
+    const plan = this.cache.get(planId);
+    if (!plan) {
+      if (planId === '7313-2014') {
+        const canonical = this.cache.get('7313-2014');
+        if (canonical) return JSON.parse(JSON.stringify(canonical));
+      }
+      throw new Error(`Plan curricular con id "${planId}" no encontrado en catálogo.`);
+    }
     return JSON.parse(JSON.stringify(plan));
   }
 

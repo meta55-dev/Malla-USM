@@ -60,6 +60,25 @@ async function syncFile(filename) {
     throw new Error(`El archivo descargado ${filename} no es un JSON válido: ${err.message}`);
   }
 
+  // Validación de esquema e invariantes del dataset
+  if (filename === 'planes_carreras.json') {
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error(`planes_carreras.json debe ser un array no vacío de carreras`);
+    }
+    const sample = parsed[0];
+    if (!sample.código || !sample.nombre || !sample.sede) {
+      throw new Error(`planes_carreras.json no contiene la estructura esperada (código, nombre, sede)`);
+    }
+  } else if (filename === 'horario_asignaturas.json') {
+    if (typeof parsed !== 'object' || parsed === null || Object.keys(parsed).length === 0) {
+      throw new Error(`horario_asignaturas.json debe ser un objeto no vacío con sedes`);
+    }
+  } else if (filename === 'professors_view.json' || filename === 'metadata.json') {
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error(`${filename} debe ser un objeto JSON válido`);
+    }
+  }
+
   // Serializar de forma compacta para ahorrar espacio en el repositorio y acelerar la carga
   const serialized = JSON.stringify(parsed);
   const newHash = computeMd5(serialized);

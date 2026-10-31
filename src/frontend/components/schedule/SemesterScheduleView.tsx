@@ -169,14 +169,22 @@ export function SemesterScheduleView() {
         if (targetP !== selectedPeriod) {
           setSelectedPeriod(targetP);
         }
-        const cat = await getPeriodCatalog(
-          selectedSede,
-          selectedJornada,
-          targetP || undefined
-        );
-        if (!cancelled) {
-          setPeriodCatalog(cat.courses);
+        if (targetP) {
+          const cat = await getPeriodCatalog(
+            selectedSede,
+            selectedJornada,
+            targetP
+          );
+          if (!cancelled) {
+            setPeriodCatalog(cat.courses);
+          }
+        } else {
+          setPeriodCatalog([]);
         }
+      })
+      .catch((err) => {
+        console.warn("Error cargando periodos de horario:", err);
+        if (!cancelled) setPeriods([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -769,7 +777,7 @@ export function SemesterScheduleView() {
               </select>
 
               {/* Periodo Selector */}
-              {periods.length > 0 && (
+              {periods.length > 0 ? (
                 <select
                   value={selectedPeriod}
                   onChange={(e) => setSelectedPeriod(e.target.value)}
@@ -782,7 +790,27 @@ export function SemesterScheduleView() {
                     </option>
                   ))}
                 </select>
-              )}
+              ) : !loading ? (
+                <div className="h-8 px-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-medium flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>Sin periodos disponibles</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoading(true);
+                      getSchedulePeriods(selectedSede, selectedJornada)
+                        .then((pList) => {
+                          setPeriods(pList);
+                          if (pList.length > 0) setSelectedPeriod(pList[0]);
+                        })
+                        .finally(() => setLoading(false));
+                    }}
+                    className="underline hover:text-amber-950 dark:hover:text-amber-100 ml-1 font-bold"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              ) : null}
 
               {enrolledSiglas.length > 0 && (
                 <>
