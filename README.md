@@ -72,7 +72,7 @@ flowchart TB
     subgraph Math_Engines["Motores Matemáticos Deterministas (TypeScript Puro)"]
         DAG["DAG & Prereq Evaluator\n(Forma Normal Disyuntiva DNF)"]
         CritPath["Critical Path Planner\n(Métricas L_u, D_u, W_u + Greedy Scheduler)"]
-        SchedOpt["Schedule Optimizer Engine\n(Bitmasks 16-bit + Backtracking / Beam Search)"]
+        SchedOpt["Schedule Optimizer Engine\n(Bitmasks hasta 24-bit + Exhaustive / Beam Search)"]
         Wolfram["Wolfram Grade Solver\n(SubFormulaSolver + Bisección Numérica Continua)"]
     end
 
@@ -220,13 +220,13 @@ flowchart TD
 
 ### 4.1 Representación Matemática por Máscaras de Bits (Bitmasks)
 
-El motor `src/services/scheduleOptimizer.ts` implementa una representación ultracompacta del calendario semanal para evaluar millones de combinaciones de paralelos en milisegundos.
+El motor `src/frontend/components/schedule/scheduleOptimizer.ts` implementa una representación ultracompacta del calendario semanal para evaluar millones de combinaciones de paralelos en milisegundos.
 
-La semana académica se discretiza en **7 días** (Lunes a Domingo) y **16 bloques horarios** por día (Bloques 1 al 16, desde las 08:00 hasta las 21:00 hrs). El horario ocupado por un estudiante se modela como un vector de 7 enteros de 16 bits sin signo:
+La semana académica se discretiza en **7 días** (Lunes a Domingo) y hasta **24 bloques horarios** por día (Bloques 1 al 16 para régimen diurno, y bloques 17 al 20+ para régimen vespertino). El horario ocupado por un estudiante se modela como un vector de 7 enteros de hasta 24 bits:
 
-$$\mathbf{M} = \left[ M_{\text{lun}}, M_{\text{mar}}, M_{\text{mie}}, M_{\text{jue}}, M_{\text{vie}}, M_{\text{sab}}, M_{\text{dom}} \right] \in (\mathbb{U}_{16})^7$$
+$$\mathbf{M} = \left[ M_{\text{lun}}, M_{\text{mar}}, M_{\text{mie}}, M_{\text{jue}}, M_{\text{vie}}, M_{\text{sab}}, M_{\text{dom}} \right] \in (\mathbb{U}_{32})^7$$
 
-Donde el bit $k$-ésimo ($0 \le k \le 15$) vale $1$ si el bloque $k+1$ está ocupado, y $0$ si está libre.
+Donde el bit $k$-ésimo ($0 \le k \le 23$) vale $1$ si el bloque $k+1$ está ocupado, y $0$ si está libre.
 
 #### Detección Instantánea de Colisiones (Clash Detection)
 La superposición de dos paralelos $A$ y $B$ se evalúa mediante la operación binaria AND bit a bit a nivel de procesador:
@@ -540,7 +540,7 @@ npm run dev
 * `npm run dev`: Inicia el servidor de desarrollo Vite con Hot Module Replacement (HMR).
 * `npm run build`: Compila y optimiza la aplicación para producción en la carpeta `dist/`.
 * `npm run preview`: Previsualiza localmente el paquete de producción generado.
-* `npm run test`: Ejecuta la suite de pruebas unitarias y de integración con Vitest.
+* `npm run test`: Ejecuta las 5 suites de pruebas matemáticas, de grafos, optimización, persistencia e integración mediante `tsx`.
 * `npm run sync:data`: Ejecuta el pipeline Node.js de sincronización con datos upstream.
 * `npm run extract:formulas`: Ejecuta el extractor analítico de fórmulas desde programas SIGA.
 

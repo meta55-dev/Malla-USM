@@ -1,6 +1,6 @@
 # Meta55 — USM Malla, Horario SIGA & Grade Solver — Memoria Técnica y Documentación Maestra (CONTEXT.md)
 
-> 🌐 **Sitio Web Oficial:** [https://jota216.github.io/Malla-USM/](https://jota216.github.io/Malla-USM/)  
+> 🌐 **Sitio Web Oficial:** [https://meta55-dev.github.io/Malla-USM/](https://meta55-dev.github.io/Malla-USM/)  
 > 👨‍💻 **Autores y Desarrolladores:**
 > - **Joaquín D. Barrios** — GitHub: [@Jota216](https://github.com/Jota216)
 > - **Jose Astudillo** — GitHub: [@jastudilloi](https://github.com/jastudilloi)
@@ -390,18 +390,18 @@ Se modelan formalmente las distintas vías mediante las cuales los docentes otor
 
 ### 4.8 Modelo de Optimización Multi-Criterio de Horarios SIGA
 
-El motor de optimización de horarios ([`scheduleOptimizer.ts`](file:///c:/Users/barri/Desktop/Malla_USM/src/frontend/components/schedule/scheduleOptimizer.ts)) modela la selección de paralelos como un problema de optimización combinatoria multi-criterio sobre la grilla horaria institucional (días $d \in \{0, \dots, 5\}$ para Lunes a Sábado, y bloques $b \in \{1, \dots, 16\}$).
+El motor de optimización de horarios ([`scheduleOptimizer.ts`](file:///c:/Users/jjjj/Documents/Malla-USM/src/frontend/components/schedule/scheduleOptimizer.ts)) modela la selección de paralelos como un problema de optimización combinatoria multi-criterio sobre la grilla horaria institucional (días $d \in \{0, \dots, 6\}$ para Lunes a Domingo, y bloques $b \in \{1, \dots, 24\}$ contemplando jornada diurna y vespertina).
 
 #### 1. Representación Matricial en Máscaras de Bits y Topes de Horario
 Cada paralelo seleccionado se descompone en una máscara de bits por día:
-$$M_d \in [0, 2^{16} - 1], \quad \text{donde el bit } b \text{ está encendido si existe clase en el bloque } b$$
+$$M_d \in [0, 2^{24} - 1], \quad \text{donde el bit } b \text{ está encendido si existe clase en el bloque } b$$
 
 * **Conteo de Bloques Ocupados en el Día:**
   $$\text{BloquesOcupados}_d = \text{popcount}(M_d)$$
 * **Detección y Conteo de Topes (Colisiones):**
   Dos o más asignaturas colisionan en un bloque horario $(d, b)$ si sus máscaras de bits se intersectan:
   $$\text{Topes}(d, b) = \max(0, |\{ c \in \text{Cursos} \mid \text{tiene clase en } (d, b) \}| - 1)$$
-  $$\text{clashCount} = \sum_{d=0}^5 \sum_{b=1}^{16} \text{Topes}(d, b)$$
+  $$\text{clashCount} = \sum_{d=0}^6 \sum_{b=1}^{24} \text{Topes}(d, b)$$
 
 #### 2. Formulación Matemática de Ventanas Horarias
 Una "ventana" representa horas muertas entre la primera y la última clase de un mismo día:
@@ -554,13 +554,13 @@ Para evitar la pérdida accidental de información valiosa ingresada por el estu
 * **Interfaz Profesional Libre de Emojis:**
   * Purga total de emojis y caracteres informales en la web; reemplazados por tipografía sobria e íconos vectoriales SVG de Lucide.
 * **Rebranding y Reconocimiento de Autoría:**
-  * Marca consolidada **Meta55**, autoría de **Joaquín D. Barrios** ([@Jota216](https://github.com/Jota216)) y **Jose Astudillo** ([@jastudilloi](https://github.com/jastudilloi)), y enlace oficial a `https://jota216.github.io/Malla-USM/`.
+  * Marca consolidada **Meta55**, autoría de **Joaquín D. Barrios** ([@Jota216](https://github.com/Jota216)) y **Jose Astudillo** ([@jastudilloi](https://github.com/jastudilloi)), y enlace oficial a `https://meta55-dev.github.io/Malla-USM/`.
 
 
 ### v1.4.0 — Planificador Inteligente de Malla (Ruta Crítica), Optimizador Multi-Criterio de Horarios, UX Safety y Rebranding a Meta55
 * **Rebranding Oficial a Meta55 y Reconocimiento de Autoría:**
   * Actualización formal del sistema a **Meta55** (`Meta55 — USM Malla, Horario SIGA & Grade Solver`), reflejando la icónica meta institucional de los 55 puntos.
-  * Consolidación de autoría oficial: **Joaquín D. Barrios** ([@Jota216](https://github.com/Jota216)) y **Jose Astudillo** ([@jastudilloi](https://github.com/jastudilloi)), con enlace al despliegue oficial en GitHub Pages: `https://jota216.github.io/Malla-USM/`.
+  * Consolidación de autoría oficial: **Joaquín D. Barrios** ([@Jota216](https://github.com/Jota216)) y **Jose Astudillo** ([@jastudilloi](https://github.com/jastudilloi)), con enlace al despliegue oficial en GitHub Pages: `https://meta55-dev.github.io/Malla-USM/`.
 * **Modo "Mi Planificación" en Malla Curricular (DAG Extensible):**
   * Pestaña interactiva para alternar entre "Malla Oficial" y "Mi Planificación".
   * Reordenamiento semestral interactivo con selector rápido y soporte para extender la carrera más allá de los 11 semestres curriculares (Semestres 12, 13, 14, ...).
@@ -684,7 +684,7 @@ flowchart LR
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/Jota216/Malla-USM.git
+git clone https://github.com/meta55-dev/Malla-USM.git
 cd Malla-USM
 
 # 2. Instalar dependencias
