@@ -1439,7 +1439,17 @@ export function SemesterScheduleView() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => unenrollCourse(sigla)}
+                        onClick={() => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              `¿Estás seguro de quitar ${sigla} del semestre? Se desvinculará el horario asignado.`
+                            )
+                          ) {
+                            return;
+                          }
+                          unenrollCourse(sigla);
+                        }}
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
                         title="Quitar asignatura del semestre"
                       >

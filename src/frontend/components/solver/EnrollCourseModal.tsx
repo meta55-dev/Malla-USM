@@ -332,7 +332,17 @@ export function EnrollCourseModal({
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => unenrollCourse(course.sigla)}
+                        onClick={() => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              `¿Estás seguro de quitar ${course.sigla} de las asignaturas en curso?`
+                            )
+                          ) {
+                            return;
+                          }
+                          unenrollCourse(course.sigla);
+                        }}
                         className="h-8 px-2.5 text-xs gap-1.5 text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
