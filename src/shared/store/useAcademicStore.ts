@@ -818,7 +818,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
       name: 'sansano-academic-tracker-v1',
       version: 1,
       storage: createJSONStorage(getSafeStorage),
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: any) => {
         if (!persistedState) return persistedState;
         if (
           persistedState.customMaxSemester === undefined ||

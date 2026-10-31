@@ -459,20 +459,19 @@ console.log('\n📌 Suite 7: Regression Audit Invariants Verification');
   // 1. Wolfram Solver: Root > 100 reachable in [0, 300] without premature clamping
   const testConfig: EnrolledCourseConfig = {
     sigla: 'TEST-100',
-    passingGrade: 55,
     groups: [
       {
         id: 'g1',
         name: 'Certamen 1',
         weight: 0.5,
-        minGradeRequired: null,
+        minGrade: null,
         evaluations: [{ id: 'e1', name: 'C1', weight: 1.0, score: 0 }],
       },
       {
         id: 'g2',
         name: 'Certamen 2',
         weight: 0.5,
-        minGradeRequired: null,
+        minGrade: null,
         evaluations: [{ id: 'e2', name: 'C2', weight: 1.0, score: null }],
       },
     ],
@@ -494,7 +493,6 @@ console.log('\n📌 Suite 7: Regression Audit Invariants Verification');
       prerrequisitos: [],
       requisitos_dnf: [],
       area: 'MFQ',
-      tipo: 'Obligatoria',
     },
     {
       id: 2,
@@ -506,7 +504,6 @@ console.log('\n📌 Suite 7: Regression Audit Invariants Verification');
       prerrequisitos: [], // Empty base prerrequisitos!
       requisitos_dnf: [[{ sigla: 'MAT021', tipo: 'approval' }]], // DNF requires MAT021!
       area: 'INF',
-      tipo: 'Obligatoria',
     },
   ];
   // With 0 approved courses:
@@ -515,7 +512,7 @@ console.log('\n📌 Suite 7: Regression Audit Invariants Verification');
   assert(graphBefore['INF999'].missingPrerequisites.some(p => p.replace('-', '') === 'MAT021'), 'MAT021 reported as missing prerequisite');
 
   // With MAT021 approved:
-  const graphAfter = calculateCurriculumGraph(dummyCourses, { MAT021: { sigla: 'MAT021' } });
+  const graphAfter = calculateCurriculumGraph(dummyCourses, new Set(['MAT021']));
   assert(graphAfter['INF999'].status === 'AVAILABLE', 'INF999 unlocks to AVAILABLE once MAT021 is approved');
 
   // 3. Store Statistics: Fallback for creditos_usm when SCT is 0
