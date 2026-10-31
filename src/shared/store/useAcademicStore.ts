@@ -682,10 +682,10 @@ export const useAcademicStore = create<AcademicStoreState>()(
         const defaultTotal = get().curriculum.semestres_totales || 11;
         set({
           activePlanId: nextPlanId,
-          approvedCourses: res.data.approvedCourses,
-          inProgressCourses: res.data.inProgressCourses,
+          approvedCourses: res.data.approvedCourses || {},
+          inProgressCourses: res.data.inProgressCourses || {},
           milestones:
-            res.data.milestones.length > 0
+            Array.isArray(res.data.milestones) && res.data.milestones.length > 0
               ? res.data.milestones
               : DEFAULT_GRADUATION_MILESTONES,
           plannerMode: res.data.plannerMode || 'official',
@@ -833,6 +833,12 @@ export const useAcademicStore = create<AcademicStoreState>()(
         }
         if (!persistedState.plannedSemesterOverrides || typeof persistedState.plannedSemesterOverrides !== 'object') {
           persistedState.plannedSemesterOverrides = {};
+        }
+        if (!persistedState.approvedCourses || typeof persistedState.approvedCourses !== 'object') {
+          persistedState.approvedCourses = {};
+        }
+        if (!persistedState.inProgressCourses || typeof persistedState.inProgressCourses !== 'object') {
+          persistedState.inProgressCourses = {};
         }
         return persistedState;
       },
