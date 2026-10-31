@@ -1,6 +1,7 @@
 {
   "name": "usm-malla-grade-solver",
   "version": "1.4.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

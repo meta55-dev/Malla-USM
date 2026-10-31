@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Zustand](https://img.shields.io/badge/Zustand-4.5-4338CA?style=flat)](https://github.com/pmndrs/zustand)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Deployment](https://img.shields.io/badge/GitHub_Pages-Live-success?style=flat&logo=github)](https://meta55-dev.github.io/Malla-USM/)
 
 > 🌐 **Plataforma Oficial en Producción:** [https://meta55-dev.github.io/Malla-USM/](https://meta55-dev.github.io/Malla-USM/)
@@ -558,4 +558,4 @@ npm run dev
 * **Atribución de Datos y Agradecimientos:**
   * Los datasets de asignaturas, planes de estudio, horarios de paralelos y la lógica base del scraper de SIGA provienen del proyecto open-source [**horario-usm**](https://github.com/AlvinIsCrack/horario-usm), creado y mantenido por [**@AlvinIsCrack**](https://github.com/AlvinIsCrack).
 * **Licencia:**
-  * Este proyecto se distribuye bajo la licencia **GNU General Public License v3.0 (GPLv3)**. Consulta el archivo `LICENSE` para mayores detalles sobre derechos de uso, copia, modificación y redistribución.
+  * Este proyecto se distribuye bajo la licencia de código abierto **MIT License**. Consulta el archivo [`LICENSE`](LICENSE) para mayores detalles sobre derechos de uso, copia, modificación y redistribución.
