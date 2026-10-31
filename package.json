@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "sync:data": "node scripts/sync-upstream-data.mjs",
+    "extract:formulas": "node scripts/extract-siga-formulas.mjs",
     "test": "tsx src/wolfram-solver/tests/subFormulaSolver.test.ts && tsx src/wolfram-solver/tests/gradeSolver.test.ts && tsx src/shared/tests/qaIntegration.test.ts && tsx src/frontend/components/schedule/tests/scheduleOptimizer.test.ts && tsx src/curricula/tests/criticalPathPlanner.test.ts"
   },
   "dependencies": {
