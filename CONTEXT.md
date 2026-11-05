@@ -37,9 +37,9 @@ flowchart TD
 
     subgraph ScheduleModule [Horario Semestral & Optimizador Multi-Criterio]
         H1[Catálogo de Ramos, Paralelos, Salas y Cupos SIGA]
-        H2[Evaluación de Topes de Horario por Máscara de Bits]
-        H3[Optimizador: Minimizar Topes, Minimizar Ventanas, Maximizar Tiempo Libre]
-        H4[Búsqueda Exhaustiva o Beam Search en menos de 50ms]
+        H2[Detección Temporal Automática del Semestre Vigente]
+        H3[Evaluación de Topes de Horario por Máscara de Bits]
+        H4[Auto-Optimizador Unificado: 0 Topes, Ventanas Min, Tiempo Libre]
         H5[Ficha Docente Psicopedagógica y Exportación .ics]
         H1 --> H2 --> H3 --> H4 --> H5
     end
@@ -62,10 +62,9 @@ flowchart TD
 
 2. **Planificador y Optimizador de Horarios Semanales SIGA:**
    * Integración de datos reales de oferta académica: paralelos, campus, profesores, salas y cupos.
-   * **Motor de Optimización Multi-Criterio:** Evalúa el espacio de combinaciones de paralelos aplicando máscaras de bits para optimizar bajo 3 estrategias prioritarias:
-     1. *Minimizar Topes*: Elimina solapamientos de clases en el mismo bloque horario.
-     2. *Minimizar Ventanas*: Compacta el horario agrupando bloques contiguos y eliminando tiempos muertos.
-     3. *Maximizar Tiempo Libre*: Concéntrica las actividades para generar días completos o mañanas/tardes despejadas.
+   * **Detección Temporal Automática del Semestre Vigente:** Detección dinámica basada en la fecha del sistema (`new Date()`), seleccionando automáticamente `AÑO-1` (Enero a Julio) o `AÑO-2` (Agosto a Diciembre, ej. `2026-2` para Noviembre 2026) y eliminando el salto errático a semestres futuros como `2027-1`.
+   * **Motor de Optimización Combinatoria Unificado bajo Demanda:** Eliminación de los 3 selectores manuales de estrategia redundantes; el motor aplica un criterio óptimo balanceado unificado (0 topes $\rightarrow$ mínimas ventanas $\rightarrow$ máximos días/medios días libres).
+   * **Panel Colapsable bajo Demanda:** La sección con las mejores combinaciones encontradas se mantiene oculta por defecto al ingresar a la vista, y se despliega directamente al pulsar el botón dorado *"Sugerir Mejor Horario"*, cerrándose automáticamente de forma fluida al aplicar una opción recomendada.
    * Búsqueda híbrida determinista con *Beam Search* cuando el espacio supera 5.000 combinaciones (tiempo de respuesta inferior a 50 ms).
    * **Interfaz de Diagnóstico de Topes sin Reflujo (On-Demand Clash Inspector):** Las colisiones horarias se resumen mediante un contador numérico compacto de altura fija (`h-8`: `0 Topes` o `N Topes`) y su desglose detallado se renderiza exclusivamente bajo demanda (clic del usuario) a través de una capa superpuesta (*Portal* de Radix UI Popover), garantizando estabilidad visual total (`Zero Cumulative Layout Shift / CLS = 0`) durante la selección de paralelos y la auto-optimización.
    * Previsualización instantánea con estabilidad dimensional garantizada (contenedor estático de altura mínima reservada `min-h-[44px]`, CLS = 0, sin temblores ni bucles de hover).
@@ -92,8 +91,8 @@ flowchart TD
         Navbar[Navbar, Contadores & Selector Carrera]
         CurriculumGrid[CurriculumGrid, SemesterColumn & CourseCard]
         PlannerMode[Modo Mi Planificación & Controles SCT]
-        ScheduleView[SemesterScheduleView & Grid Semanal]
-        ScheduleOptimizerUI[ScheduleOptimizer & Controles de Estrategia]
+        ScheduleView[SemesterScheduleView, Grid Semanal & Selector Dinámico Semestre]
+        ScheduleOptimizerUI[Auto-Optimizador Unificado & Panel Bajo Demanda]
         ClashInspector[ClashInspector Portal CLS=0]
         ProfModal[ProfessorReviewModal - Reseñas Docentes]
         SolverView[SemesterSolver & CourseSolverCard]
@@ -121,7 +120,7 @@ flowchart TD
 
     subgraph Schedule_Domain [Dominio Schedule - Optimización Combinatoria]
         BitmaskEngine[scheduleOptimizer.ts - Máscaras de Bits]
-        LexicographicSort[Ordenamiento Lexicográfico por Estrategia]
+        LexicographicSort[Ordenamiento Lexicográfico Unificado]
         BeamSearch[Beam Search Híbrido Ancho=60]
     end
 
@@ -187,7 +186,8 @@ Malla_USM/
 │   │   │   ├── curriculumService.ts        # Proveedor de planes de estudio y créditos
 │   │   │   └── sigaService.ts              # Abstracción y carga de catálogos SIGA USM con fallback CDN
 │   │   ├── tests/
-│   │   │   └── criticalPathPlanner.test.ts # Suite de pruebas del planificador de ruta crítica
+│   │   │   ├── criticalPathPlanner.test.ts # Suite de pruebas del planificador de ruta crítica
+│   │   │   └── sigaDateSelection.test.ts   # Suite de pruebas de detección de semestre y periodos SIGA
 │   │   └── index.ts                        # Punto de exportación pública del dominio curricula
 │   ├── frontend/                           # Dominio de presentación e interfaz de usuario React
 │   │   ├── components/
@@ -420,14 +420,15 @@ $$\text{windowBlocks} = \sum_{d=0}^4 \text{Ventanas}_d$$
   $$\text{freeAfternoons} = \sum_{d=0}^4 \mathbb{I}\left(\sum_{b=9}^{16} \text{bit}_b(M_d) = 0\right)$$
   $$\text{freeHalfDays} = \text{freeMornings} + \text{freeAfternoons}$$
 
-#### 4. Ordenamiento Lexicográfico por Estrategia
-El optimizador clasifica y compara combinaciones $C_1$ y $C_2$ mediante una tupla de ordenamiento lexicográfico estricto:
+#### 4. Ordenamiento Lexicográfico por Estrategia y Criterio Unificado
+El optimizador clasifica y compara combinaciones $C_1$ y $C_2$ mediante una tupla de ordenamiento lexicográfico estricto. El sistema adopta por defecto el **Criterio de Ordenamiento Lexicográfico Unificado**, el cual sintetiza holísticamente las prioridades del estudiante (garantizar cero topes, minimizar ventanas y maximizar tiempo libre) sin requerir conmutadores manuales redundantes:
+$$\text{Criterio Unificado} = (\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$$
 
 | Estrategia | Vector de Comparación Lexicográfica | Objetivo Primario |
 |---|---|---|
-| `minimize_clashes` | $(\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$ | Cero colisiones; desempatar por compacidad |
-| `minimize_windows` | $(\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$ | Jornadas compactas sin tiempos muertos |
-| `maximize_free_time` | $(\text{clashCount}, -\text{freeDays}, -\text{freeHalfDays}, \text{windowBlocks})$ | Concentrar clases en menos días |
+| `minimize_clashes` *(Unificado por Defecto)* | $(\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$ | Cero colisiones absolutas $\rightarrow$ desempate por compacidad (menos ventanas) $\rightarrow$ más días y medios días libres |
+| `minimize_windows` | $(\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$ | Jornadas compactas sin tiempos muertos intermedios |
+| `maximize_free_time` | $(\text{clashCount}, -\text{freeDays}, -\text{freeHalfDays}, \text{windowBlocks})$ | Concentrar clases en la menor cantidad de días posibles |
 
 #### 5. Estrategia Híbrida de Búsqueda (Exhaustiva vs Beam Search)
 Dado el conjunto de asignaturas $\{C_1, \dots, C_k\}$ con número de paralelos ofertados $|P_{C_i}|$, el tamaño del espacio de búsqueda es $|\Omega| = \prod_{i=1}^k |P_{C_i}|$:
@@ -449,6 +450,28 @@ Para optimizar el rendimiento interactivo y garantizar la estabilidad visual seg
    * Al estar aislado en una capa flotante z-index `z-50`, el despliegue del modal o su cierre tiene **impacto cero en las coordenadas de la grilla horaria (`Cumulative Layout Shift / CLS = 0`)**.
 4. **Eliminación de Bucles y Eventos Hover en Alertas:**
    * Se erradicaron los disparadores de tipo hover o mouse-over en las advertencias de colisiones, eliminando de raíz los reflujos cíclicos de renderizado (*layout thrashing*) inducidos por el movimiento involuntario del cursor sobre la tabla.
+
+#### 7. Detección Temporal Automática del Semestre Académico Vigente
+Para prevenir inconsistencias donde la interfaz saltaba a semestres futuros no vigentes (como `2027-1` cuando el año en curso es 2026), el módulo [`sigaService.ts`](file:///c:/Users/barri/Desktop/Malla_USM/src/curricula/services/sigaService.ts) provee la función determinista pura `getCurrentAcademicSemester(date = new Date())`:
+
+$$\text{Semestre}(d) = \begin{cases}
+\text{year}(d)\text{-1} & \text{si } 1 \le \text{month}(d) \le 7 \quad (\text{Enero a Julio}) \\
+\text{year}(d)\text{-2} & \text{si } 8 \le \text{month}(d) \le 12 \quad (\text{Agosto a Diciembre})
+\end{cases}$$
+
+1. **Selección Inteligente de Periodo en la Interfaz (`SemesterScheduleView.tsx`):**
+   Al cargar la lista de periodos disponibles `pList`, el selector evalúa reactivamente:
+   $$\text{targetPeriod} = \begin{cases}
+   \text{selectedPeriod} & \text{si } \text{selectedPeriod} \in \text{pList} \\
+   \text{currentPeriod} & \text{si } \text{currentPeriod} \in \text{pList} \\
+   \max \{ p \in \text{pList} \mid p \le \text{currentPeriod} \} & \text{si existen periodos históricos} \\
+   \text{pList}[0] & \text{en última instancia}
+   \end{cases}$$
+   Esto asegura que el estudiante siempre aterrice de forma predeterminada en el semestre académico real en curso (ej. `2026-2` en Noviembre 2026) y nunca sea forzado a planificar sobre semestres futuros inexistentes o vacíos.
+2. **Consultas a Catálogo y Paralelos por Defecto:**
+   Tanto `getPeriodCatalog` como `getCourseParallels` utilizan `getCurrentAcademicSemester()` como argumento por defecto cuando no se explicita un periodo.
+3. **Persistencia Histórica en Registro de Aprobaciones:**
+   Al marcar una asignatura como aprobada en `useAcademicStore.toggleCourseApproval`, el registro almacena automáticamente el semestre académico real detectado por la regla temporal vigente.
 
 ---
 
@@ -526,6 +549,24 @@ Para evitar la pérdida accidental de información valiosa ingresada por el estu
 ---
 
 ## 5. Historial de Versiones (Changelog)
+
+### v1.4.3 — Auto-Optimizador Directo Bajo Demanda y Detección Automática del Semestre Vigente
+* **Motor de Optimización Combinatoria Unificado bajo Demanda:**
+  * Eliminación de las pestañas y selectores de estrategia redundantes en `SemesterScheduleView.tsx` en favor de un único criterio óptimo balanceado: prioridad absoluta a 0 topes, compactación de ventanas horarias y maximización de días y medios días libres:
+    $$\text{Criterio Unificado} = (\text{clashCount}, \text{windowBlocks}, -\text{freeDays}, -\text{freeHalfDays})$$
+* **Panel de Resultados Colapsable Bajo Demanda:**
+  * La sección del Top 3 de mejores combinaciones se mantiene oculta por defecto al ingresar al módulo de horario para garantizar una grilla despejada y enfocada.
+  * Despliegue reactivo y fluido bajo demanda exclusivamente al pulsar el botón dorado *"Sugerir Mejor Horario"*, con auto-scroll suave hacia el panel de resultados.
+  * Cierre automático e inmediato del panel al aplicar una combinación recomendada mediante el botón *"Aplicar Horario"*.
+* **Detección Temporal Automática del Semestre Académico Vigente:**
+  * Implementación de la función determinista pura `getCurrentAcademicSemester(date = new Date())` en `sigaService.ts`, aplicando la regla institucional USM: meses 1 a 7 (Enero a Julio) corresponden a `YYYY-1`, y meses 8 a 12 (Agosto a Diciembre) corresponden a `YYYY-2` (ej. `2026-2` para Noviembre 2026).
+  * Erradicación del error de salto a semestres futuros inexistentes (`2027-1` en año 2026): el selector de periodos ahora aterriza automáticamente en el periodo real vigente o en el periodo histórico más cercano $\le \text{currentPeriod}$.
+  * Integración en el store global Zustand (`useAcademicStore`) para registrar el semestre real al marcar asignaturas aprobadas.
+* **Cero Emojis Crudos en Todo el Sistema:**
+  * Sustitución completa y sistemática de emojis informales por iconografía vectorial SVG de Lucide (`Sparkles`, `Wand2`, `Calendar`, `AlertTriangle`, `CheckCircle2`, `ChevronUp`, `ChevronDown`, `Eye`).
+* **Nueva Suite Automatizada de Pruebas Unitarias (`sigaDateSelection.test.ts`):**
+  * Validación exhaustiva de los límites de mes para los 12 meses del año, resolución de periodos en listas mixtas (futuros y pasados), defaults en catálogos SIGA y persistencia en store.
+
 
 ### v1.4.2 — Inspector de Topes On-Demand sin Reflujo (Zero Layout Shift) y Estabilidad Horaria
 * **Erradicación de Banners Dinámicos de Colisiones en `SemesterScheduleView.tsx`:**

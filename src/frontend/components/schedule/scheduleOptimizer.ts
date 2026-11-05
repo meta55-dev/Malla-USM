@@ -189,11 +189,11 @@ export function evaluatePrecomputedCombination(
 /**
  * Strict multi-criteria comparator based on chosen strategy:
  * 
- * - 'minimize_clashes':
- *    1. clashCount ASC
- *    2. windowBlocks ASC
- *    3. freeDays DESC
- *    4. freeHalfDays DESC
+ * - 'minimize_clashes' (Unified balanced optimal criteria - Default):
+ *    1. clashCount ASC (prioritize zero clashes)
+ *    2. windowBlocks ASC (tie-break by fewest window blocks)
+ *    3. freeDays DESC (tie-break by most free days)
+ *    4. freeHalfDays DESC (tie-break by most free half-days)
  * 
  * - 'minimize_windows':
  *    1. clashCount ASC (clashes first)
@@ -210,7 +210,7 @@ export function evaluatePrecomputedCombination(
 export function compareScheduleMetrics(
   a: ScheduleOptimizationMetrics,
   b: ScheduleOptimizationMetrics,
-  strategy: ScheduleOptimizationStrategy
+  strategy: ScheduleOptimizationStrategy = 'minimize_clashes'
 ): number {
   // Primary criterion across all modes: MINIMIZE CLASHES
   if (a.clashCount !== b.clashCount) {
@@ -243,7 +243,7 @@ export function compareScheduleMetrics(
     return 0;
   }
 
-  // 'minimize_clashes'
+  // 'minimize_clashes' (Default: unified balanced optimal criteria)
   if (a.windowBlocks !== b.windowBlocks) {
     return a.windowBlocks - b.windowBlocks; // ASC
   }
@@ -261,7 +261,7 @@ export function compareScheduleMetrics(
  */
 export function computeScheduleScore(
   metrics: ScheduleOptimizationMetrics,
-  strategy: ScheduleOptimizationStrategy
+  strategy: ScheduleOptimizationStrategy = 'minimize_clashes'
 ): number {
   let score = 100;
 
@@ -432,7 +432,7 @@ function exhaustiveSearch(
   courseCandidates: Array<{ sigla: string; parallels: PrecomputedParallel[] }>,
   considerSaturday: boolean,
   considerSunday: boolean,
-  strategy: ScheduleOptimizationStrategy
+  strategy: ScheduleOptimizationStrategy = 'minimize_clashes'
 ): PrecomputedParallel[][] {
   const allCombos: PrecomputedParallel[][] = [];
   const n = courseCandidates.length;
@@ -472,7 +472,7 @@ function beamSearch(
   courseCandidates: Array<{ sigla: string; parallels: PrecomputedParallel[] }>,
   considerSaturday: boolean,
   considerSunday: boolean,
-  strategy: ScheduleOptimizationStrategy,
+  strategy: ScheduleOptimizationStrategy = 'minimize_clashes',
   beamWidth = 800
 ): PrecomputedParallel[][] {
   // Sort courses by candidate count ascending (most constrained first)

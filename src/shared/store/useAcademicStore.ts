@@ -29,7 +29,7 @@ import {
 import { calculateCurriculumGraph } from '@/curricula/prerequisites/graphUnlock';
 import { solveCourseStatus } from '@/wolfram-solver/engine/gradeSolver';
 import { solveSubFormulaCourse } from '@/wolfram-solver/engine/subFormulaSolver';
-import { sigaService } from '@/curricula/services/sigaService';
+import { sigaService, getCurrentAcademicSemester } from '@/curricula/services/sigaService';
 import { curriculumService } from '@/curricula/services/curriculumService';
 
 export interface EnrollCourseOptions {
@@ -348,6 +348,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
             sigla: norm,
             grade: grade !== undefined ? Number(grade) : undefined,
             approvedAt: new Date().toISOString(),
+            semester: getCurrentAcademicSemester(),
           };
           // Remove from in-progress if it was currently enrolled
           if (currentInProgress[norm]) {
@@ -373,6 +374,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
         );
 
         const now = new Date().toISOString();
+        const currentSem = getCurrentAcademicSemester();
         for (const r of semCourses) {
           const norm = r.sigla.trim().toUpperCase();
           if (allApproved) {
@@ -382,6 +384,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
               currentApproved[norm] = {
                 sigla: norm,
                 approvedAt: now,
+                semester: currentSem,
               };
             }
             if (currentInProgress[norm]) {
@@ -403,6 +406,7 @@ export const useAcademicStore = create<AcademicStoreState>()(
           currentApproved[norm] = {
             ...currentApproved[norm],
             grade: Number(grade),
+            semester: currentApproved[norm].semester || getCurrentAcademicSemester(),
           };
           set({ approvedCourses: currentApproved });
         }

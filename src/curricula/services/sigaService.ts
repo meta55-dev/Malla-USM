@@ -135,6 +135,22 @@ export const USM_BLOCK_PAIRS = [
 ];
 
 /**
+ * Determina el semestre académico actual según la fecha dada (o la fecha del sistema por defecto).
+ * Regla USM:
+ * - Meses 1 a 7 (Enero a Julio) -> Semestre 1 ("YYYY-1")
+ * - Meses 8 a 12 (Agosto a Diciembre) -> Semestre 2 ("YYYY-2")
+ */
+export function getCurrentAcademicSemester(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1; // 1-12
+  if (month >= 1 && month <= 7) {
+    return `${year}-1`;
+  } else {
+    return `${year}-2`;
+  }
+}
+
+/**
  * Agrupa bloques consecutivos de un mismo día, tipo y sala (ej. bloque 1 y 2 -> "1-2")
  * para mostrarlos de forma compacta en tarjetas y modales.
  */
@@ -335,10 +351,16 @@ class SigaService {
       .sort()
       .reverse();
 
+    const currentSemester = getCurrentAcademicSemester();
+    const defaultPeriod =
+      periods.includes(currentSemester)
+        ? currentSemester
+        : periods.find((p) => p <= currentSemester) || periods[0] || '';
+
     const activePeriod =
       periodo && jornadaData[periodo] && Object.keys(jornadaData[periodo]).length > 0
         ? periodo
-        : periods[0] || '';
+        : defaultPeriod;
 
     if (!activePeriod || !jornadaData[activePeriod]) {
       return { periodo: activePeriod, courses: [] };
@@ -383,23 +405,43 @@ class SigaService {
     if (!jornadaData) return { periodo: periodo || '', parallels: [] };
 
     const targetKey = normalizeSiglaKey(sigla);
-    const periods = Object.keys(jornadaData).sort().reverse();
+    const periods = Object.keys(jornadaData)
+      .filter((p) => Object.keys(jornadaData[p] || {}).length > 0)
+      .sort()
+      .reverse();
 
     if (periodo && jornadaData[periodo]) {
       const courseMap = jornadaData[periodo][targetKey];
-      if (courseMap) {
-        return {
-          periodo,
-          parallels: Object.values(courseMap),
-        };
-      }
+      return {
+        periodo,
+        parallels: courseMap ? Object.values(courseMap) : [],
+      };
     }
 
-    // Buscar en el periodo más reciente donde se dicte o en el último periodo activo con ramos
-    for (const p of periods) {
+    const currentSemester = getCurrentAcademicSemester();
+    const activePeriod =
+      periods.includes(currentSemester)
+        ? currentSemester
+        : periods.find((p) => p <= currentSemester) || periods[0] || '';
+
+    // Si se encuentra en el periodo activo determinado por la fecha del sistema, retornarlo directamente
+    if (activePeriod && jornadaData[activePeriod]?.[targetKey]) {
+      return {
+        periodo: activePeriod,
+        parallels: Object.values(jornadaData[activePeriod][targetKey]),
+      };
+    }
+
+    // Si no está en el periodo activo, buscar en los periodos priorizando los <= currentSemester
+    // (del más cercano hacia atrás) y luego como fallback los periodos futuros
+    const prioritizedPeriods = [
+      ...periods.filter((p) => p <= currentSemester),
+      ...periods.filter((p) => p > currentSemester),
+    ];
+
+    for (const p of prioritizedPeriods) {
       const pData = jornadaData[p];
-      if (!pData || Object.keys(pData).length === 0) continue;
-      if (pData[targetKey]) {
+      if (pData && pData[targetKey]) {
         return {
           periodo: p,
           parallels: Object.values(pData[targetKey]),
@@ -407,8 +449,7 @@ class SigaService {
       }
     }
 
-    const latestNonEmpty = periods.find((p) => Object.keys(jornadaData[p] || {}).length > 0) || '';
-    return { periodo: latestNonEmpty, parallels: [] };
+    return { periodo: activePeriod, parallels: [] };
   }
 
   /**
